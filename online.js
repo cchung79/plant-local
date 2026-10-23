@@ -341,11 +341,9 @@ function keysSettingsHtml() {
   const row = (id, label, hint, url) => `<div style="padding:6px 0;border-bottom:1px solid var(--line)"><label class="small"><b>${label}</b> — ${hint} <a href="${url}" target="_blank" rel="noopener">키 받기</a></label>
     <input type="password" autocomplete="off" data-key="${id}" value="${esc(k[id] || "")}" placeholder="${k[id] ? "" : "비어 있음"}" style="margin-top:4px">
     ${k[id] ? `<span class="small">저장됨: ${esc(k[id].slice(0, 12))}… (${k[id].length}자)</span>` : ""}</div>`;
-  return `<h2>온라인 기능 (선택)</h2>
-  <div class="card">
+  return `<div class="card">
     <p class="small" style="margin-top:0">버튼을 누를 때만 인터넷을 씁니다. 키는 이 폰에만 저장되고 백업 파일에는 들어가지 않습니다. 사진과 식물 기록은 그 버튼의 서비스로만 보내집니다.</p>
     ${row("plantnet", "Pl@ntNet", "사진으로 식물 찾기, 하루 500회 무료. 키 설정에서 이 사이트 주소를 허용해야 합니다.", "https://my.plantnet.org/")}
-    ${ecoSettingsHtml()}
     ${row("perenual", "Perenual", "물·햇빛 참고값 (무료 키, 일부 식물은 유료)", "https://perenual.com/docs/api")}
     ${row("kindwise", "Kindwise plant.health", "사진으로 병해 찾기, 처음 100크레딧 무료", "https://admin.kindwise.com/signup")}
     ${row("claude", "Claude (Anthropic)", "새 식물 일정 제안, 상태 묻기. platform.claude.com → API Keys에서 만든 sk-ant-api03-… 키. 사용한 만큼 요금(크레딧 충전 필요)", "https://platform.claude.com/settings/keys")}
