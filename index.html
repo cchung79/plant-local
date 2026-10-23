@@ -1,0 +1,421 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>우리 집 식물</title>
+<meta name="theme-color" content="#1b2a20">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="icon" href="icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="우리 집 식물">
+<style>
+:root {
+  --bg: #f4f6f2; --card: #ffffff; --ink: #1d2620; --sub: #66716a; --line: #dfe5dd;
+  --green: #2f7d4f; --green-soft: #e3f1e7; --blue: #2b6cb0; --blue-soft: #e3eefa;
+  --brown: #8a5a17; --brown-soft: #f6ecdc; --red: #c0392b; --red-soft: #fbe6e3;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #111713; --card: #1b221d; --ink: #e8eee9; --sub: #9aa59d; --line: #2c362f;
+    --green: #6fcf97; --green-soft: #1f3527; --blue: #7fb3f0; --blue-soft: #1c2a3b;
+    --brown: #e0b06a; --brown-soft: #3a2d1a; --red: #ff8a7a; --red-soft: #3d201c;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.45 -apple-system, "Apple SD Gothic Neo", "Noto Sans KR", "Malgun Gothic", sans-serif;
+       font-variant-numeric: tabular-nums; padding-bottom: calc(72px + env(safe-area-inset-bottom)); }
+header { position: sticky; top: 0; z-index: 5; background: var(--bg); padding: calc(10px + env(safe-area-inset-top)) 16px 8px; border-bottom: 1px solid var(--line); }
+header h1 { margin: 0; font-size: 20px; }
+header .sub { color: var(--sub); font-size: 13px; }
+main { padding: 12px 16px; max-width: 640px; margin: 0 auto; }
+nav { position: fixed; bottom: 0; left: 0; right: 0; display: flex; background: var(--card); border-top: 1px solid var(--line); padding-bottom: env(safe-area-inset-bottom); z-index: 5; }
+nav button { flex: 1; border: 0; background: none; color: var(--sub); font: inherit; font-size: 14px; padding: 12px 0; }
+nav button.on { color: var(--green); font-weight: 700; }
+h2 { font-size: 15px; color: var(--sub); margin: 18px 0 8px; font-weight: 600; }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 12px 14px; margin-bottom: 10px; }
+.plant { display: flex; align-items: center; gap: 10px; cursor: pointer; }
+.plant .main { flex: 1; min-width: 0; }
+.plant .name { font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.plant .loc { color: var(--sub); font-size: 13px; }
+.badges { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+.badge { font-size: 13px; padding: 3px 8px; border-radius: 999px; white-space: nowrap; }
+.b-water { background: var(--blue-soft); color: var(--blue); }
+.b-fert { background: var(--brown-soft); color: var(--brown); }
+.b-late { background: var(--red-soft); color: var(--red); font-weight: 700; }
+.b-moist { background: var(--green-soft); color: var(--green); }
+.empty { color: var(--sub); text-align: center; padding: 24px 0; }
+input, select, textarea { font: inherit; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; width: 100%; }
+input[type=number] { text-align: right; }
+.btn { border: 0; border-radius: 12px; padding: 12px 14px; font: inherit; font-weight: 700; cursor: pointer; }
+.btn-water { background: var(--blue); color: #fff; }
+.btn-fert { background: var(--brown); color: #fff; }
+.btn-moist { background: var(--green); color: #fff; }
+.btn-ghost { background: var(--bg); color: var(--ink); border: 1px solid var(--line); font-weight: 500; }
+.row3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.field { display: grid; grid-template-columns: 1fr 110px; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--line); }
+.field:last-child { border-bottom: 0; }
+.field label { font-size: 15px; }
+.field .hint { color: var(--sub); font-size: 12px; display: block; }
+.unit { display: flex; align-items: center; gap: 6px; }
+.unit span { color: var(--sub); font-size: 14px; white-space: nowrap; }
+body.locked { overflow: hidden; }
+.sheet { position: fixed; inset: 0; background: var(--bg); z-index: 10; overflow-y: auto; padding-bottom: 40px; }
+.sheet header { display: flex; align-items: center; gap: 10px; }
+.sheet header button { border: 0; background: none; color: var(--green); font: inherit; font-size: 17px; padding: 4px 0; }
+.suggest { border-left: 4px solid var(--green); }
+.suggest p { margin: 0 0 10px; }
+.log { font-size: 14px; display: grid; grid-template-columns: 88px 1fr auto; gap: 4px 10px; align-items: center; }
+.log .d { color: var(--sub); }
+.log button { border: 0; background: none; color: var(--sub); font-size: 13px; }
+.toggle { display: flex; align-items: center; justify-content: space-between; padding: 6px 0; }
+.toast { position: fixed; left: 50%; bottom: calc(84px + env(safe-area-inset-bottom)); transform: translateX(-50%); background: var(--ink); color: var(--bg);
+         padding: 10px 16px; border-radius: 999px; font-size: 14px; z-index: 20; display: none; }
+.small { color: var(--sub); font-size: 13px; }
+</style>
+</head>
+<body>
+<header><h1 id="title">우리 집 식물</h1><div class="sub" id="today"></div></header>
+<main id="view"></main>
+<nav>
+  <button data-tab="todo" class="on">할 일</button>
+  <button data-tab="plants">식물</button>
+  <button data-tab="settings">설정</button>
+</nav>
+<div class="toast" id="toast"></div>
+
+<script src="online.js"></script>
+<script id="seed" type="application/json">{"version": 1, "source": "", "seasons": {"warm": [3, 10], "cold": [11, 2]}, "plants": []}</script>
+<script>
+"use strict";
+// ---- storage: everything stays on this phone (localStorage); backup = export/import a JSON file ----
+const KEY = "plantlocal.v1";
+let db;
+function load() {
+  try { const s = localStorage.getItem(KEY); if (s) return JSON.parse(s); } catch (e) {}
+  return null;
+}
+function save() {
+  try { localStorage.setItem(KEY, JSON.stringify(db)); } catch (e) { toast("저장 실패: 저장 공간을 확인하세요"); }
+}
+function fromSeed() {
+  const seed = JSON.parse(document.getElementById("seed").textContent);
+  const log = [];
+  for (const p of seed.plants) {
+    if (p.lastWater) log.push({ id: uid(), plant: p.id, type: "water", date: p.lastWater, note: "PLANTA 기록" });
+    if (p.lastFert) log.push({ id: uid(), plant: p.id, type: "fert", date: p.lastFert, note: "PLANTA 기록" });
+    delete p.lastWater; delete p.lastFert;
+  }
+  return { version: 1, seasons: seed.seasons, plants: seed.plants, log, source: seed.source };
+}
+
+// ---- dates (local calendar days, as YYYY-MM-DD) ----
+const pad = n => String(n).padStart(2, "0");
+const iso = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+const today = () => iso(new Date());
+const parse = s => { const [y, m, d] = s.split("-").map(Number); return new Date(y, m - 1, d); };
+const addDays = (s, n) => { const d = parse(s); d.setDate(d.getDate() + n); return iso(d); };
+const diff = (a, b) => Math.round((parse(b) - parse(a)) / 86400000);   // days from a to b
+const md = s => { const d = parse(s); return `${d.getMonth() + 1}/${d.getDate()}`; };
+function uid() { return Math.random().toString(36).slice(2, 10); }
+
+function season(dateStr) {
+  const m = parse(dateStr).getMonth() + 1, [a, b] = db.seasons.warm;
+  return (a <= b ? (m >= a && m <= b) : (m >= a || m <= b)) ? "warm" : "cold";
+}
+const SEASON_KO = { warm: "따뜻한 계절", cold: "추운 계절" };
+function monthsText(k) { const [a, b] = db.seasons[k]; return `${a}~${b}월`; }
+
+// ---- schedule ----
+const logsOf = (pid, type) => db.log.filter(l => l.plant === pid && (!type || l.type === type)).sort((a, b) => a.date < b.date ? 1 : a.date > b.date ? -1 : 0);
+const last = (pid, type) => logsOf(pid, type)[0] || null;
+function interval(p, kind) {
+  const s = season(today());
+  if (kind === "fert" && !p.fert.on) return null;
+  return p[kind][s] || null;
+}
+function due(p, kind) {               // {date, days} or {none:true} / {unknown:true}
+  const iv = interval(p, kind);
+  if (!iv) return { none: true };
+  const l = last(p.id, kind);
+  if (!l) return { unknown: true };
+  let date = addDays(l.date, iv);
+  const sn = logsOf(p.id, "snooze").find(x => x.kind === kind && x.date >= l.date);
+  if (sn && sn.until > date) date = sn.until;
+  if (kind === "fert") {
+    const w = due(p, "water");
+    if (!w.none && !w.unknown && date < w.date) return { date: w.date, days: diff(today(), w.date), withWater: true };
+  }
+  return { date, days: diff(today(), date) };
+}
+function lastMoist(p) {
+  const w = last(p.id, "water"), m = last(p.id, "moist");
+  return m && (!w || m.date >= w.date) ? m : null;
+}
+function dueText(d) {
+  if (d.none) return "";
+  if (d.unknown) return "기록 없음";
+  if (d.days < 0) return `${-d.days}일 지남`;
+  if (d.days === 0) return "오늘";
+  if (d.days === 1) return "내일";
+  return `${d.days}일 뒤`;
+}
+function badge(p, kind) {
+  const d = due(p, kind); if (d.none) return "";
+  const late = d.unknown ? false : d.days <= 0;
+  return `<span class="badge ${late ? "b-late" : kind === "water" ? "b-water" : "b-fert"}">${kind === "water" ? "물" : "비료"} ${d.withWater ? "물과 같이" : dueText(d)}</span>`;
+}
+
+// ---- views ----
+let tab = "todo";
+const view = document.getElementById("view");
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+function plantRow(p) {
+  const m = lastMoist(p);
+  return `<div class="card plant" data-open="${p.id}">
+    ${p.photo ? `<img src="${p.photo}" alt="" style="width:44px;height:44px;object-fit:cover;border-radius:10px;flex:none">` : ""}
+    <div class="main"><div class="name">${esc(p.name)}</div><div class="loc">${esc(p.location)}${m ? ` · 수분 ${m.value}% (${md(m.date)})` : ""}</div></div>
+    <div class="badges">${badge(p, "water")}${badge(p, "fert")}</div></div>`;
+}
+function renderTodo() {
+  if (!db.plants.length) {
+    view.innerHTML = `<div class="card" style="margin-top:12px"><b>식물이 아직 없습니다</b><p class="small">처음 데이터 파일(식물_시작데이터_*.json)을 이 폰에 받은 뒤, <b>설정 → 가져오기</b>로 넣으세요. 식물을 하나씩 직접 추가해도 됩니다(식물 탭).</p></div>`;
+    return;
+  }
+  const soon = [], later = [], unknown = [];
+  for (const p of db.plants) {
+    const ds = ["water", "fert"].map(k => due(p, k)).filter(d => !d.none);
+    if (ds.some(d => d.unknown)) unknown.push(p);
+    const min = Math.min(...ds.filter(d => !d.unknown).map(d => d.days));
+    if (min <= 2) soon.push([min, p]); else if (isFinite(min)) later.push([min, p]);
+  }
+  soon.sort((a, b) => a[0] - b[0]); later.sort((a, b) => a[0] - b[0]);
+  view.innerHTML =
+    `<h2>오늘·곧 (2일 안)</h2>${soon.length ? soon.map(x => plantRow(x[1])).join("") : `<div class="empty">당장 할 일이 없습니다</div>`}` +
+    (unknown.length ? `<h2>마지막 기록이 없음 — 물 준 날을 넣어 주세요</h2>${unknown.map(plantRow).join("")}` : "") +
+    `<h2>그다음</h2>${later.map(x => plantRow(x[1])).join("")}`;
+}
+function renderPlants() {
+  const byLoc = {};
+  for (const p of db.plants) (byLoc[p.location || "위치 없음"] ??= []).push(p);
+  view.innerHTML = Object.keys(byLoc).sort().map(l => `<h2>${esc(l)} · ${byLoc[l].length}</h2>${byLoc[l].map(plantRow).join("")}`).join("") +
+    `<button class="btn btn-ghost" style="width:100%;margin-top:8px" id="add">+ 식물 추가</button>`;
+  document.getElementById("add").onclick = () => openAddPlant();
+}
+function renderSettings() {
+  view.innerHTML = `
+  <h2>계절</h2>
+  <div class="card">
+    <div class="field"><label>따뜻한 계절 시작 달</label><div class="unit"><input type="number" min="1" max="12" id="ws" value="${db.seasons.warm[0]}"><span>월</span></div></div>
+    <div class="field"><label>따뜻한 계절 끝 달</label><div class="unit"><input type="number" min="1" max="12" id="we" value="${db.seasons.warm[1]}"><span>월</span></div></div>
+    <div class="small">나머지 달은 추운 계절입니다. 지금은 <b>${SEASON_KO[season(today())]}</b>.</div>
+  </div>
+  <h2>백업 (폰끼리 옮기기)</h2>
+  <div class="card">
+    <p class="small" style="margin-top:0">데이터는 이 폰 안에만 있습니다. 다른 폰으로 옮기거나 보관하려면 파일로 내보내고, 그 폰에서 가져오기 하세요.</p>
+    <div class="row2"><button class="btn btn-ghost" id="exp">내보내기</button><button class="btn btn-ghost" id="imp">가져오기</button></div>
+    <input type="file" id="file" accept="application/json,.json" style="display:none">
+  </div>
+  ${keysSettingsHtml()}
+  <h2>모두 지우기</h2>
+  <div class="card"><p class="small" style="margin-top:0">이 폰의 식물과 기록을 모두 지웁니다. 처음 데이터로 돌아가려면 지운 뒤 시작 데이터 파일을 다시 가져오세요. 지우기 전에 내보내기를 해 두세요.</p>
+    <button class="btn btn-ghost" id="reset" style="color:var(--red)">모두 지우기</button></div>
+  <p class="small">식물 ${db.plants.length}그루 · 기록 ${db.log.length}건 · 처음 데이터: ${esc(db.source || "")}</p>`;
+  const setSeason = () => {
+    const a = +document.getElementById("ws").value, b = +document.getElementById("we").value;
+    if (a >= 1 && a <= 12 && b >= 1 && b <= 12) {
+      db.seasons.warm = [a, b]; db.seasons.cold = [b % 12 + 1, (a + 10) % 12 + 1]; save(); toast("계절을 바꿨습니다");
+    }
+  };
+  bindKeys();
+  document.getElementById("ws").onchange = setSeason; document.getElementById("we").onchange = setSeason;
+  document.getElementById("exp").onclick = () => {
+    const blob = new Blob([JSON.stringify(db, null, 1)], { type: "application/json" });
+    const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = `식물백업_${today()}.json`; a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  };
+  document.getElementById("imp").onclick = () => document.getElementById("file").click();
+  document.getElementById("file").onchange = async e => {
+    const f = e.target.files[0]; if (!f) return;
+    try {
+      const d = JSON.parse(await f.text());
+      if (!Array.isArray(d.plants) || !Array.isArray(d.log)) throw 0;
+      if (!confirm(`이 폰의 데이터를 파일 내용(식물 ${d.plants.length}그루, 기록 ${d.log.length}건)으로 바꿀까요?`)) return;
+      db = d; save(); toast("가져왔습니다"); render();
+    } catch (err) { toast("이 파일은 식물 백업 파일이 아닙니다"); }
+  };
+  document.getElementById("reset").onclick = () => {
+    if (confirm("정말 모두 지울까요? 식물과 기록이 이 폰에서 사라집니다.")) { db = fromSeed(); save(); render(); toast("지웠습니다"); }
+  };
+}
+
+// ---- plant sheet ----
+let sheet = null;
+function openPlant(id, isNew) {
+  const p = db.plants.find(x => x.id === id); if (!p) return;
+  sheet?.remove();
+  sheet = document.createElement("div"); sheet.className = "sheet";
+  document.body.appendChild(sheet); document.body.classList.add("locked");
+  drawPlant(p, isNew);
+}
+function closeSheet() { sheet?.remove(); sheet = null; document.body.classList.remove("locked"); render(); }
+function num(v) { const n = parseInt(v, 10); return Number.isFinite(n) && n > 0 ? n : null; }
+
+function drawPlant(p, isNew) {
+  const s = season(today()), wd = due(p, "water"), fd = due(p, "fert"), m = lastMoist(p);
+  const lw = last(p.id, "water"), lf = last(p.id, "fert");
+  const logs = logsOf(p.id).slice(0, 30);
+  const TYPE = { water: "물", fert: "비료", moist: "수분", snooze: "미룸", edit: "간격 변경", diag: "상태 묻기" };
+  sheet.innerHTML = `
+  <header><button id="back">‹ 목록</button><h1 style="flex:1;font-size:18px;margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(p.name)}</h1></header>
+  <main>
+    ${p.photo ? `<img src="${p.photo}" alt="" style="width:100%;max-height:220px;object-fit:cover;border-radius:14px;margin-bottom:8px">` : ""}
+    <div class="small">${esc(p.species)} · ${esc(p.location)}</div>
+    <div class="card" style="margin-top:10px">
+      <div class="row2" style="margin-bottom:8px">
+        <div><div class="small">물</div><b>${dueText(wd) || "—"}</b><div class="small">${lw ? `마지막 ${md(lw.date)} (${diff(lw.date, today())}일 전)` : "기록 없음"}</div></div>
+        <div><div class="small">비료</div><b>${fd.none ? (p.fert.on ? "이번 계절 안 함" : "비료 일정 꺼짐") : dueText(fd)}</b>${fd.withWater ? `<div class="small">밀려서 다음 물 줄 때 같이</div>` : ""}<div class="small">${lf ? `마지막 ${md(lf.date)} (${diff(lf.date, today())}일 전)` : "기록 없음"}</div></div>
+      </div>
+      <div class="small">흙 수분: ${m ? `<b>${m.value}%</b> (${md(m.date)}) · 기준 ${p.moistureMin}% 이하면 물` : `아직 안 잼 · 기준 ${p.moistureMin}% 이하면 물`}</div>
+    </div>
+
+    <div class="card">
+      <div class="row2" style="margin-bottom:8px"><input type="number" id="mv" inputmode="numeric" min="0" max="100" placeholder="수분계 %"><button class="btn btn-moist" id="mbtn">수분 기록</button></div>
+      <div class="row3"><button class="btn btn-water" id="wbtn">물 줌</button><button class="btn btn-fert" id="fbtn">비료 줌</button><button class="btn btn-ghost" id="bbtn">물+비료</button></div>
+      <div class="unit" style="margin-top:8px"><span>날짜</span><input type="date" id="dt" value="${today()}" max="${today()}"></div>
+    </div>
+    <div id="sg"></div>
+    ${diagCardHtml(p)}
+
+    <h2>내 일정 (지금은 ${SEASON_KO[s]})</h2>
+    <div class="card">
+      <div class="field"><label>물 · 따뜻한 계절<span class="hint">${monthsText("warm")}</span></label><div class="unit"><input type="number" inputmode="numeric" data-k="water.warm" value="${p.water.warm ?? ""}"><span>일</span></div></div>
+      <div class="field"><label>물 · 추운 계절<span class="hint">${monthsText("cold")}</span></label><div class="unit"><input type="number" inputmode="numeric" data-k="water.cold" value="${p.water.cold ?? ""}"><span>일</span></div></div>
+      <div class="toggle"><label for="fon">비료 일정 사용</label><input type="checkbox" id="fon" style="width:auto;transform:scale(1.4)" ${p.fert.on ? "checked" : ""}></div>
+      <div class="field" ${p.fert.on ? "" : 'style="opacity:.4"'}><label>비료 · 따뜻한 계절<span class="hint">비우면 안 함</span></label><div class="unit"><input type="number" inputmode="numeric" data-k="fert.warm" value="${p.fert.warm ?? ""}" ${p.fert.on ? "" : "disabled"}><span>일</span></div></div>
+      <div class="field" ${p.fert.on ? "" : 'style="opacity:.4"'}><label>비료 · 추운 계절<span class="hint">비우면 안 함</span></label><div class="unit"><input type="number" inputmode="numeric" data-k="fert.cold" value="${p.fert.cold ?? ""}" ${p.fert.on ? "" : "disabled"}><span>일</span></div></div>
+      <div class="field"><label>물 줄 기준 수분<span class="hint">수분계가 이 값 이하면 물</span></label><div class="unit"><input type="number" inputmode="numeric" min="0" max="100" data-k="moistureMin" value="${p.moistureMin ?? ""}"><span>%</span></div></div>
+    </div>
+
+    <h2>식물 정보</h2>
+    <div class="card">
+      <div class="field"><label>이름</label><input data-t="name" value="${esc(p.name)}"></div>
+      <div class="field"><label>위치</label><input data-t="location" value="${esc(p.location)}" list="locs"></div>
+      <div class="field"><label>학명</label><input data-t="species" value="${esc(p.species)}"></div>
+      <div style="padding-top:6px"><label class="small">메모</label><textarea data-t="note" rows="2">${esc(p.note)}</textarea></div>
+      <datalist id="locs">${[...new Set(db.plants.map(x => x.location).filter(Boolean))].map(l => `<option value="${esc(l)}">`).join("")}</datalist>
+      ${careRefText(p)}
+    </div>
+
+    <h2>기록</h2>
+    <div class="card log">${logs.length ? logs.map(l => `<span class="d">${l.date}</span><span>${TYPE[l.type]}${l.type === "moist" ? ` ${l.value}%` : ""}${l.type === "snooze" ? ` (${l.kind === "water" ? "물" : "비료"} → ${md(l.until)})` : ""}${l.type === "edit" ? ` ${esc(l.note)}` : ""}${l.note && l.type !== "edit" ? ` <span class="small">${esc(l.note)}</span>` : ""}</span><button data-del="${l.id}">지우기</button>`).join("") : `<span class="small" style="grid-column:1/-1">기록이 없습니다</span>`}</div>
+    <button class="btn btn-ghost" id="delp" style="width:100%;margin-top:16px;color:var(--red)">이 식물 지우기</button>
+  </main>`;
+
+  const $ = id => sheet.querySelector("#" + id);
+  const d = () => $("dt").value || today();
+  $("back").onclick = closeSheet;
+  const add = (type, extra = {}) => { db.log.push({ id: uid(), plant: p.id, type, date: d(), ...extra }); save(); };
+  $("wbtn").onclick = () => { const sg = afterWater(p, d()); add("water"); drawPlant(p); toast("물 준 날을 기록했습니다"); if (sg) showSuggest(p, sg); };
+  $("fbtn").onclick = () => { add("fert"); drawPlant(p); toast("비료 준 날을 기록했습니다"); };
+  $("bbtn").onclick = () => { const sg = afterWater(p, d()); add("water"); add("fert"); drawPlant(p); toast("물과 비료를 기록했습니다"); if (sg) showSuggest(p, sg); };
+  $("mbtn").onclick = () => {
+    const v = parseInt($("mv").value, 10);
+    if (!(v >= 0 && v <= 100)) { toast("0~100 사이 숫자를 넣어 주세요"); return; }
+    add("moist", { value: v }); drawPlant(p); showSuggest(p, afterMoist(p, v, d()));
+  };
+  for (const inp of sheet.querySelectorAll("[data-k]")) inp.onchange = () => {
+    const [a, b] = inp.dataset.k.split("."), old = b ? p[a][b] : p[a], v = num(inp.value);
+    if (a === "moistureMin") p.moistureMin = Math.min(100, v ?? 0); else p[a][b] = v;
+    if (old !== (b ? p[a][b] : p[a])) db.log.push({ id: uid(), plant: p.id, type: "edit", date: today(), note: `${label(inp.dataset.k)} ${unitv(old, inp.dataset.k)} → ${unitv(b ? p[a][b] : p[a], inp.dataset.k)}` });
+    save(); drawPlant(p); toast("바꿨습니다");
+  };
+  $("fon").onchange = e => { p.fert.on = e.target.checked; db.log.push({ id: uid(), plant: p.id, type: "edit", date: today(), note: `비료 일정 ${p.fert.on ? "켬" : "끔"}` }); save(); drawPlant(p); };
+  for (const inp of sheet.querySelectorAll("[data-t]")) inp.onchange = () => { p[inp.dataset.t] = inp.value.trim(); save(); if (inp.dataset.t === "name") drawPlant(p); };
+  for (const b of sheet.querySelectorAll("[data-del]")) b.onclick = () => {
+    const l = db.log.find(x => x.id === b.dataset.del);
+    if (l && confirm(`${l.date} 기록을 지울까요?`)) { db.log = db.log.filter(x => x !== l); save(); drawPlant(p); }
+  };
+  $("delp").onclick = () => {
+    if (confirm(`"${p.name}"을(를) 지울까요? 기록도 함께 지워집니다.`)) { db.plants = db.plants.filter(x => x !== p); db.log = db.log.filter(l => l.plant !== p.id); save(); closeSheet(); }
+  };
+  bindDiag(p);
+  if (isNew) sheet.querySelector('[data-t="name"]').focus();
+}
+function careRefText(p) {
+  const c = p.careRef || {};
+  const parts = [c.light, c.dry, c.mist && `분무 ${c.mist}`, c.repot && `분갈이 ${c.repot}`, c.toxic].filter(Boolean);
+  return parts.length ? `<div class="small" style="margin-top:8px">${esc(c.src || "PLANTA")} 참고: ${parts.map(esc).join(" · ")}</div>` : "";
+}
+function unitv(v, k) { return v == null ? "없음" : v + (k === "moistureMin" ? "%" : "일"); }
+function label(k) {
+  return { "water.warm": "물(따뜻)", "water.cold": "물(추운)", "fert.warm": "비료(따뜻)", "fert.cold": "비료(추운)", moistureMin: "기준 수분" }[k];
+}
+
+// ---- suggestions: the app only proposes; nothing changes until a button is pressed ----
+function afterMoist(p, v, date) {
+  const lw = last(p.id, "water"), s = season(date), iv = p.water[s];
+  if (v <= p.moistureMin) {
+    const since = lw ? diff(lw.date, date) : null;
+    const out = { text: `수분 ${v}% — 기준 ${p.moistureMin}% 이하입니다. <b>물을 주세요.</b>`, actions: [{ t: "물 줌", f: () => sheet.querySelector("#wbtn").click() }] };
+    if (since && iv && Math.abs(since - iv) >= Math.max(2, iv * 0.2))
+      out.text += `<br>마지막 물 뒤 ${since}일 만에 말랐습니다. 지금 ${SEASON_KO[s]} 간격은 ${iv}일이에요.`,
+      out.actions.push({ t: `간격 ${since}일로`, f: () => setInterval_(p, s, since) });
+    return out;
+  }
+  // still moist: estimate when it reaches the threshold from earlier readings since the last watering
+  const ms = logsOf(p.id, "moist").filter(x => (!lw || x.date >= lw.date) && x.date < date);
+  let days = null;
+  if (ms.length) {
+    const prev = ms[ms.length - 1], dd = diff(prev.date, date), drop = prev.value - v;
+    if (dd > 0 && drop > 0) days = Math.max(1, Math.round((v - p.moistureMin) / (drop / dd)));
+  }
+  const wd = due(p, "water");
+  if (days === null) days = Math.max(2, Math.round((iv || 10) / 4));
+  const until = addDays(date, days);
+  const out = { text: `수분 ${v}% — 아직 촉촉합니다(기준 ${p.moistureMin}%). ` +
+      (ms.length && days ? `지금 마르는 속도면 약 <b>${days}일 뒤</b> 기준에 닿습니다.` : `<b>${days}일 뒤</b> 다시 재 보세요.`), actions: [] };
+  if (!wd.unknown && !wd.none && wd.date < until)
+    out.actions.push({ t: `물 ${md(until)}로 미루기`, f: () => { db.log.push({ id: uid(), plant: p.id, type: "snooze", kind: "water", date, until }); save(); drawPlant(p); toast(`물을 ${md(until)}로 미뤘습니다`); } });
+  return out;
+}
+function afterWater(p, date) {      // watering on a day the soil was measured dry: offer the real interval
+  const lw = last(p.id, "water"), m = lastMoist(p), s = season(date), iv = p.water[s];
+  if (!lw || !m || m.date !== date || m.value > p.moistureMin || !iv) return null;
+  const since = diff(lw.date, date);
+  if (since <= 0 || Math.abs(since - iv) < Math.max(2, iv * 0.2)) return null;
+  return { text: `이번에는 ${since}일 만에 물을 줬습니다(흙 ${m.value}%). ${SEASON_KO[s]} 간격 ${iv}일을 ${since}일로 바꿀까요?`,
+           actions: [{ t: `${since}일로 바꾸기`, f: () => setInterval_(p, s, since) }] };
+}
+function setInterval_(p, s, n) {
+  const old = p.water[s]; p.water[s] = n;
+  db.log.push({ id: uid(), plant: p.id, type: "edit", date: today(), note: `${s === "warm" ? "물(따뜻)" : "물(추운)"} ${old}일 → ${n}일` });
+  save(); drawPlant(p); toast(`간격을 ${n}일로 바꿨습니다`);
+}
+function showSuggest(p, sg) {
+  const box = sheet.querySelector("#sg");
+  box.innerHTML = `<div class="card suggest"><p>${sg.text}</p><div class="row2">${sg.actions.map((a, i) => `<button class="btn ${i ? "btn-ghost" : "btn-moist"}" data-a="${i}">${a.t}</button>`).join("")}<button class="btn btn-ghost" data-a="x">닫기</button></div></div>`;
+  for (const b of box.querySelectorAll("[data-a]")) b.onclick = () => { if (b.dataset.a === "x") box.innerHTML = ""; else sg.actions[+b.dataset.a].f(); };
+  box.scrollIntoView({ behavior: "smooth", block: "center" });
+}
+
+// ---- shell ----
+let toastT;
+function toast(t) { const e = document.getElementById("toast"); e.textContent = t; e.style.display = "block"; clearTimeout(toastT); toastT = setTimeout(() => e.style.display = "none", 2200); }
+function render() {
+  document.getElementById("today").textContent = `${today()} · ${SEASON_KO[season(today())]} · 식물 ${db.plants.length}그루`;
+  for (const b of document.querySelectorAll("nav button")) b.classList.toggle("on", b.dataset.tab === tab);
+  ({ todo: renderTodo, plants: renderPlants, settings: renderSettings })[tab]();
+}
+document.querySelector("nav").onclick = e => { const t = e.target.dataset.tab; if (t) { tab = t; sheet?.remove(); sheet = null; document.body.classList.remove("locked"); render(); window.scrollTo(0, 0); } };
+view.onclick = e => { const c = e.target.closest("[data-open]"); if (c) openPlant(c.dataset.open); };
+document.addEventListener("visibilitychange", () => { if (!document.hidden && !sheet) render(); });
+
+db = load() || fromSeed(); save(); render();
+if ("serviceWorker" in navigator && location.protocol === "https:") navigator.serviceWorker.register("sw.js").catch(() => {});
+</script>
+</body>
+</html>
