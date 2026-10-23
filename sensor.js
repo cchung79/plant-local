@@ -152,7 +152,9 @@ function ecoSettingsHtml() {
   const k = keys();
   return `<div style="padding:6px 0;border-bottom:1px solid var(--line)"><label class="small"><b>Ecowitt</b> — 토양 수분 센서. ecowitt.net 로그인 → Private Center에서 만든 키 2개 <a href="https://www.ecowitt.net/home/user" target="_blank" rel="noopener">키 받기</a></label>
     <input type="password" autocomplete="off" data-key="ecowitt_app" value="${esc(k.ecowitt_app || "")}" placeholder="Application Key" style="margin-top:4px">
+    ${k.ecowitt_app ? `<span class="small">저장됨: ${esc(k.ecowitt_app.slice(0, 8))}… (${k.ecowitt_app.length}자)</span>` : ""}
     <input type="password" autocomplete="off" data-key="ecowitt_api" value="${esc(k.ecowitt_api || "")}" placeholder="API Key" style="margin-top:6px">
+    ${k.ecowitt_api ? `<span class="small">저장됨: ${esc(k.ecowitt_api.slice(0, 8))}… (${k.ecowitt_api.length}자)</span>` : ""}
     <div class="toggle" style="padding-top:8px"><span class="small" id="eres">${k.ecowitt_mac ? `장치: ${esc(k.ecowitt_name || "")} (${esc(k.ecowitt_mac)})` : "키를 넣고 장치를 찾아 주세요."}</span><button class="btn btn-ghost" id="efind" style="white-space:nowrap">장치 찾기</button></div>
     <div id="elink">${k.ecowitt_mac ? channelLinksHtml() : ""}</div></div>`;
 }
