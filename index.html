@@ -326,7 +326,14 @@ function drawPlant(p, isNew) {
   $("dtoday").onclick = () => { delete sheet.dataset.date; $("dt").value = today(); showDay(); };
   showDay();
   $("back").onclick = closeSheet;
-  const add = (type, extra = {}) => { db.log.push({ id: uid(), plant: p.id, type, date: d(), ...extra }); save(); };
+  const add = (type, extra = {}) => {
+    const newer = (type === "water" || type === "fert") ? logsOf(p.id, type).find(x => x.date > d()) : null;
+    db.log.push({ id: uid(), plant: p.id, type, date: d(), ...extra }); save();
+    if (newer) setTimeout(() => showSuggest(p, {
+      text: `${md(d())} ${type === "water" ? "물" : "비료"} 기록을 넣었지만, 더 최근인 <b>${md(newer.date)}</b> 기록이 있어서 다음 날짜는 ${md(newer.date)} 기준으로 계산됩니다. ${md(newer.date)} 기록이 잘못 들어간 것이면 지우세요.`,
+      actions: [{ t: `${md(newer.date)} 기록 지우기`, f: () => { db.log = db.log.filter(x => x !== newer); save(); drawPlant(p); toast(`${md(newer.date)} 기록을 지웠습니다`); } }],
+    }), 0);
+  };
   $("wbtn").onclick = () => { pick(); const sg = afterWater(p, d()); add("water"); drawPlant(p); toast(`${md(d())} 물 준 날을 기록했습니다`); if (sg) showSuggest(p, sg); };
   $("fbtn").onclick = () => { pick(); add("fert"); drawPlant(p); toast(`${md(d())} 비료 준 날을 기록했습니다`); };
   $("bbtn").onclick = () => { pick(); const sg = afterWater(p, d()); add("water"); add("fert"); drawPlant(p); toast(`${md(d())} 물과 비료를 기록했습니다`); if (sg) showSuggest(p, sg); };
