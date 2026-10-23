@@ -265,6 +265,7 @@ function closeSheet() { sheet?.remove(); sheet = null; document.body.classList.r
 function num(v) { const n = parseInt(v, 10); return Number.isFinite(n) && n > 0 ? n : null; }
 
 function drawPlant(p, isNew) {
+  header();
   const s = season(today()), wd = due(p, "water"), fd = due(p, "fert"), m = lastMoist(p);
   const lw = last(p.id, "water"), lf = last(p.id, "fert");
   const logs = logsOf(p.id).slice(0, 30);
@@ -433,8 +434,9 @@ function showSuggest(p, sg) {
 // ---- shell ----
 let toastT;
 function toast(t) { const e = document.getElementById("toast"); e.textContent = t; e.style.display = "block"; clearTimeout(toastT); toastT = setTimeout(() => e.style.display = "none", 2200); }
+function header() { document.getElementById("today").textContent = `${today()} · ${SEASON_KO[season(today())]} · 식물 ${db.plants.length}그루`; }
 function render() {
-  document.getElementById("today").textContent = `${today()} · ${SEASON_KO[season(today())]} · 식물 ${db.plants.length}그루`;
+  header();
   for (const b of document.querySelectorAll("nav button")) b.classList.toggle("on", b.dataset.tab === tab);
   ({ todo: renderTodo, plants: renderPlants, settings: renderSettings })[tab]();
 }
