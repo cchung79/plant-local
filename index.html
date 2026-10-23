@@ -93,6 +93,7 @@ body.locked { overflow: hidden; }
 <div class="toast" id="toast"></div>
 
 <script src="online.js"></script>
+<script src="sensor.js"></script>
 <script id="seed" type="application/json">{"version": 1, "source": "", "seasons": {"warm": [3, 10], "cold": [11, 2]}, "plants": []}</script>
 <script>
 "use strict";
@@ -135,7 +136,8 @@ const SEASON_KO = { warm: "따뜻한 계절", cold: "추운 계절" };
 function monthsText(k) { const [a, b] = db.seasons[k]; return `${a}~${b}월`; }
 
 // ---- schedule ----
-const logsOf = (pid, type) => db.log.filter(l => l.plant === pid && (!type || l.type === type)).sort((a, b) => a.date < b.date ? 1 : a.date > b.date ? -1 : 0);
+const logsOf = (pid, type) => db.log.map((l, i) => [l, i]).filter(([l]) => l.plant === pid && (!type || l.type === type))
+  .sort(([a, i], [b, j]) => a.date < b.date ? 1 : a.date > b.date ? -1 : (b.sensorT || 0) - (a.sensorT || 0) || j - i).map(([l]) => l);
 const last = (pid, type) => logsOf(pid, type)[0] || null;
 function interval(p, kind) {
   const s = season(today());
@@ -184,7 +186,7 @@ function plantRow(p) {
   return `<div class="card plant" data-open="${p.id}">
     ${p.photo ? `<img src="${p.photo}" alt="" style="width:44px;height:44px;object-fit:cover;border-radius:10px;flex:none">` : ""}
     <div class="main"><div class="name">${esc(p.name)}</div><div class="loc">${esc(p.location)}${m ? ` · 수분 ${m.value}% (${md(m.date)})` : ""}</div></div>
-    <div class="badges">${badge(p, "water")}${badge(p, "fert")}</div></div>`;
+    <div class="badges">${m && m.value <= p.moistureMin ? `<span class="badge b-late">흙 마름 ${m.value}%</span>` : ""}${badge(p, "water")}${badge(p, "fert")}</div></div>`;
 }
 function renderTodo() {
   if (!db.plants.length) {
@@ -195,14 +197,16 @@ function renderTodo() {
   for (const p of db.plants) {
     const ds = ["water", "fert"].map(k => due(p, k)).filter(d => !d.none);
     if (ds.some(d => d.unknown)) unknown.push(p);
-    const min = Math.min(...ds.filter(d => !d.unknown).map(d => d.days));
+    const dry = lastMoist(p) && lastMoist(p).value <= p.moistureMin;
+    const min = dry ? 0 : Math.min(...ds.filter(d => !d.unknown).map(d => d.days));
     if (min <= 2) soon.push([min, p]); else if (isFinite(min)) later.push([min, p]);
   }
   soon.sort((a, b) => a[0] - b[0]); later.sort((a, b) => a[0] - b[0]);
   view.innerHTML =
-    `<h2>오늘·곧 (2일 안)</h2>${soon.length ? soon.map(x => plantRow(x[1])).join("") : `<div class="empty">당장 할 일이 없습니다</div>`}` +
+    sensorTopHtml() + `<h2>오늘·곧 (2일 안)</h2>${soon.length ? soon.map(x => plantRow(x[1])).join("") : `<div class="empty">당장 할 일이 없습니다</div>`}` +
     (unknown.length ? `<h2>마지막 기록이 없음 — 물 준 날을 넣어 주세요</h2>${unknown.map(plantRow).join("")}` : "") +
     `<h2>그다음</h2>${later.map(x => plantRow(x[1])).join("")}`;
+  bindSensorTop();
 }
 function renderPlants() {
   const byLoc = {};
@@ -311,7 +315,9 @@ function drawPlant(p, isNew) {
       <div class="field" ${p.fert.on ? "" : 'style="opacity:.4"'}><label>비료 · 따뜻한 계절<span class="hint">비우면 안 함</span></label><div class="unit"><input type="number" inputmode="numeric" data-k="fert.warm" value="${p.fert.warm ?? ""}" ${p.fert.on ? "" : "disabled"}><span>일</span></div></div>
       <div class="field" ${p.fert.on ? "" : 'style="opacity:.4"'}><label>비료 · 추운 계절<span class="hint">비우면 안 함</span></label><div class="unit"><input type="number" inputmode="numeric" data-k="fert.cold" value="${p.fert.cold ?? ""}" ${p.fert.on ? "" : "disabled"}><span>일</span></div></div>
       <div class="field"><label>물 줄 기준 수분<span class="hint">수분계가 이 값 이하면 물</span></label><div class="unit"><input type="number" inputmode="numeric" min="0" max="100" data-k="moistureMin" value="${p.moistureMin ?? ""}"><span>%</span></div></div>
+      ${sensorFieldHtml(p)}
     </div>
+    ${sensorGraphHtml(p)}
 
     <h2>식물 정보</h2>
     <div class="card">
@@ -396,7 +402,7 @@ function drawPlant(p, isNew) {
   $("delp").onclick = () => {
     if (confirm(`"${p.name}"을(를) 지울까요? 기록도 함께 지워집니다.`)) { db.plants = db.plants.filter(x => x !== p); db.log = db.log.filter(l => l.plant !== p.id); save(); closeSheet(); }
   };
-  bindDiag(p);
+  bindDiag(p); bindSensor(p);
   $("toask").onclick = () => { db.chatTarget = p.id; save(); tab = "ask"; sheet?.remove(); sheet = null; document.body.classList.remove("locked"); render(); window.scrollTo(0, 0); };
   if (isNew) sheet.querySelector('[data-t="name"]').focus();
 }
@@ -469,7 +475,11 @@ function render() {
 document.querySelector("nav").onclick = e => { const t = e.target.dataset.tab; if (t) { tab = t; sheet?.remove(); sheet = null; document.body.classList.remove("locked"); render(); window.scrollTo(0, 0); } };
 view.onclick = e => { const c = e.target.closest("[data-open]"); if (c) openPlant(c.dataset.open); };
 // coming back to the app refreshes the lists (dates move on); never redraw a screen with a photo/file picker in use
-document.addEventListener("visibilitychange", () => { if (!document.hidden && !sheet && (tab === "todo" || tab === "plants")) render(); });
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) return;
+  if (!sheet && (tab === "todo" || tab === "plants")) render();
+  syncSensors().then(c => { if (c && !sheet && (tab === "todo" || tab === "plants")) render(); }).catch(() => {});
+});
 
 db = load() || fromSeed();
 function dedupe() {
@@ -491,10 +501,11 @@ if (location.hash.startsWith("#import=")) {
   } catch (e) { toast("데이터 링크를 읽지 못했습니다"); }
   history.replaceState(null, "", location.pathname);
 }
+setTimeout(() => syncSensors().then(c => { if (c && !sheet && (tab === "todo" || tab === "plants")) render(); }).catch(() => {}), 300);
 const removed = dedupe(); if (removed) setTimeout(() => toast(`같은 날 중복 기록 ${removed}건을 정리했습니다`), 300);
 save(); render();
 // ---- updates: check on every open/return; when a new version takes over, reload once (not while a plant is open) ----
-const APP_VERSION = "12";
+const APP_VERSION = "13";
 let pendingReload = false;
 if ("serviceWorker" in navigator && (location.protocol === "https:" || ["localhost", "127.0.0.1"].includes(location.hostname))) {
   const hadController = !!navigator.serviceWorker.controller;

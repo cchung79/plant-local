@@ -170,7 +170,7 @@ function plantContext(p) {
   return `식물: ${p.name} (${p.species || "학명 모름"})\n위치: ${p.location}\n화분: ${p.pot?.type || "?"} ${p.pot?.cm ? p.pot.cm + "cm" : ""} 흙: ${p.pot?.soil || "?"}\n` +
     `지금 계절: ${SEASON_KO[s]} (따뜻한 계절 ${monthsText("warm")}, 추운 계절 ${monthsText("cold")})\n` +
     `물 간격: 따뜻 ${p.water.warm ?? "-"}일 / 추운 ${p.water.cold ?? "-"}일, 비료: ${p.fert.on ? `따뜻 ${p.fert.warm ?? "안 함"} / 추운 ${p.fert.cold ?? "안 함"}일` : "안 함"}\n` +
-    `물 줄 기준 수분: ${p.moistureMin}% (수분계 0~100%)\n메모: ${p.note || "-"}\n최근 기록(최신순, 오늘 ${today()}):\n${recent || "없음"}`;
+    `물 줄 기준 수분: ${p.moistureMin}% (수분계 0~100%)${p.sensorCh ? `, Ecowitt 토양 센서 CH${p.sensorCh} 연결(기록의 "센서" 수분 값)` : ""}\n메모: ${p.note || "-"}\n최근 기록(최신순, 오늘 ${today()}):\n${recent || "없음"}`;
 }
 
 // ---- 식물 추가 (photo → identify → reference → proposal → edit → save) ----
@@ -345,6 +345,7 @@ function keysSettingsHtml() {
   <div class="card">
     <p class="small" style="margin-top:0">버튼을 누를 때만 인터넷을 씁니다. 키는 이 폰에만 저장되고 백업 파일에는 들어가지 않습니다. 사진과 식물 기록은 그 버튼의 서비스로만 보내집니다.</p>
     ${row("plantnet", "Pl@ntNet", "사진으로 식물 찾기, 하루 500회 무료. 키 설정에서 이 사이트 주소를 허용해야 합니다.", "https://my.plantnet.org/")}
+    ${ecoSettingsHtml()}
     ${row("perenual", "Perenual", "물·햇빛 참고값 (무료 키, 일부 식물은 유료)", "https://perenual.com/docs/api")}
     ${row("kindwise", "Kindwise plant.health", "사진으로 병해 찾기, 처음 100크레딧 무료", "https://admin.kindwise.com/signup")}
     ${row("claude", "Claude (Anthropic)", "새 식물 일정 제안, 상태 묻기. platform.claude.com → API Keys에서 만든 sk-ant-api03-… 키. 사용한 만큼 요금(크레딧 충전 필요)", "https://platform.claude.com/settings/keys")}
@@ -356,6 +357,7 @@ function bindKeys() {
     inp.oninput = () => setKey(inp.dataset.key, inp.value.trim());
     inp.onchange = () => { setKey(inp.dataset.key, inp.value.trim()); toast(inp.value.trim() ? "키를 저장했습니다" : "키를 지웠습니다"); };
   }
+  bindEcoSettings();
   const btn = document.getElementById("ctest"), out = document.getElementById("cres");
   if (btn) btn.onclick = async () => {
     const k = (keys().claude || "").trim();
