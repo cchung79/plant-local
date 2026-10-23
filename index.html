@@ -223,7 +223,11 @@ function renderSettings() {
   <h2>모두 지우기</h2>
   <div class="card"><p class="small" style="margin-top:0">이 폰의 식물과 기록을 모두 지웁니다. 처음 데이터로 돌아가려면 지운 뒤 시작 데이터 파일을 다시 가져오세요. 지우기 전에 내보내기를 해 두세요.</p>
     <button class="btn btn-ghost" id="reset" style="color:var(--red)">모두 지우기</button></div>
+  <h2>앱 버전</h2>
+  <div class="card"><div class="toggle"><span>지금 버전 <b>${APP_VERSION}</b></span><button class="btn btn-ghost" id="upd">새 버전 받기</button></div>
+    <p class="small" style="margin:4px 0 0">새 버전은 앱을 열 때 자동으로 받습니다. 화면이 예전 그대로이면 이 버튼을 누르세요. 식물과 기록은 지워지지 않습니다.</p></div>
   <p class="small">식물 ${db.plants.length}그루 · 기록 ${db.log.length}건 · 처음 데이터: ${esc(db.source || "")}</p>`;
+  document.getElementById("upd").onclick = forceUpdate;
   const setSeason = () => {
     const a = +document.getElementById("ws").value, b = +document.getElementById("we").value;
     if (a >= 1 && a <= 12 && b >= 1 && b <= 12) {
@@ -261,7 +265,7 @@ function openPlant(id, isNew) {
   document.body.appendChild(sheet); document.body.classList.add("locked");
   drawPlant(p, isNew);
 }
-function closeSheet() { sheet?.remove(); sheet = null; document.body.classList.remove("locked"); render(); }
+function closeSheet() { sheet?.remove(); sheet = null; document.body.classList.remove("locked"); if (pendingReload) { location.reload(); return; } render(); }
 function num(v) { const n = parseInt(v, 10); return Number.isFinite(n) && n > 0 ? n : null; }
 
 function drawPlant(p, isNew) {
@@ -470,7 +474,28 @@ if (location.hash.startsWith("#import=")) {
 }
 const removed = dedupe(); if (removed) setTimeout(() => toast(`같은 날 중복 기록 ${removed}건을 정리했습니다`), 300);
 save(); render();
-if ("serviceWorker" in navigator && location.protocol === "https:") navigator.serviceWorker.register("sw.js").catch(() => {});
+// ---- updates: check on every open/return; when a new version takes over, reload once (not while a plant is open) ----
+const APP_VERSION = "8";
+let pendingReload = false;
+if ("serviceWorker" in navigator && (location.protocol === "https:" || ["localhost", "127.0.0.1"].includes(location.hostname))) {
+  const hadController = !!navigator.serviceWorker.controller;
+  navigator.serviceWorker.addEventListener("controllerchange", () => {
+    if (!hadController || pendingReload) return;
+    pendingReload = true;
+    if (!sheet) location.reload(); else toast("새 버전이 준비됐습니다. 목록으로 돌아가면 적용됩니다");
+  });
+  navigator.serviceWorker.register("sw.js", { updateViaCache: "none" }).then(r => {
+    r.update().catch(() => {});
+    document.addEventListener("visibilitychange", () => { if (!document.hidden) r.update().catch(() => {}); });
+  }).catch(() => {});
+}
+async function forceUpdate() {
+  try {
+    for (const r of await navigator.serviceWorker.getRegistrations()) await r.unregister();
+    for (const k of await caches.keys()) await caches.delete(k);
+  } catch (e) {}
+  location.reload();
+}
 </script>
 </body>
 </html>
