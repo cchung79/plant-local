@@ -414,7 +414,18 @@ document.querySelector("nav").onclick = e => { const t = e.target.dataset.tab; i
 view.onclick = e => { const c = e.target.closest("[data-open]"); if (c) openPlant(c.dataset.open); };
 document.addEventListener("visibilitychange", () => { if (!document.hidden && !sheet) render(); });
 
-db = load() || fromSeed(); save(); render();
+db = load() || fromSeed();
+// one-time setup link: #import=<base64url JSON>. The part after # never leaves the phone (it is not sent to the web server).
+if (location.hash.startsWith("#import=")) {
+  try {
+    const t = location.hash.slice(8).replace(/-/g, "+").replace(/_/g, "/");
+    const d = JSON.parse(new TextDecoder().decode(Uint8Array.from(atob(t), c => c.charCodeAt(0))));
+    if (!Array.isArray(d.plants) || !Array.isArray(d.log)) throw 0;
+    if (!db.plants.length || confirm(`지금 데이터를 식물 ${d.plants.length}그루 데이터로 바꿀까요?`)) { db = d; toast(`식물 ${d.plants.length}그루를 넣었습니다`); }
+  } catch (e) { toast("데이터 링크를 읽지 못했습니다"); }
+  history.replaceState(null, "", location.pathname);
+}
+save(); render();
 if ("serviceWorker" in navigator && location.protocol === "https:") navigator.serviceWorker.register("sw.js").catch(() => {});
 </script>
 </body>
