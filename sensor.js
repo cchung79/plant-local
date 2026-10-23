@@ -153,10 +153,35 @@ function ecoSettingsHtml() {
   return `<div style="padding:6px 0;border-bottom:1px solid var(--line)"><label class="small"><b>Ecowitt</b> — 토양 수분 센서. ecowitt.net 로그인 → Private Center에서 만든 키 2개 <a href="https://www.ecowitt.net/home/user" target="_blank" rel="noopener">키 받기</a></label>
     <input type="password" autocomplete="off" data-key="ecowitt_app" value="${esc(k.ecowitt_app || "")}" placeholder="Application Key" style="margin-top:4px">
     <input type="password" autocomplete="off" data-key="ecowitt_api" value="${esc(k.ecowitt_api || "")}" placeholder="API Key" style="margin-top:6px">
-    <div class="toggle" style="padding-top:8px"><span class="small" id="eres">${k.ecowitt_mac ? `장치: ${esc(k.ecowitt_name || "")} (${esc(k.ecowitt_mac)})` : "키를 넣고 장치를 찾아 주세요."}</span><button class="btn btn-ghost" id="efind" style="white-space:nowrap">장치 찾기</button></div></div>`;
+    <div class="toggle" style="padding-top:8px"><span class="small" id="eres">${k.ecowitt_mac ? `장치: ${esc(k.ecowitt_name || "")} (${esc(k.ecowitt_mac)})` : "키를 넣고 장치를 찾아 주세요."}</span><button class="btn btn-ghost" id="efind" style="white-space:nowrap">장치 찾기</button></div>
+    <div id="elink">${k.ecowitt_mac ? channelLinksHtml() : ""}</div></div>`;
+}
+function channelLinksHtml() {
+  const chs = Object.entries(sensorCache().channels || {});
+  if (!chs.length) return "";
+  return `<div class="small" style="margin-top:8px"><b>센서가 꽂힌 화분</b></div>` + chs.map(([n, v]) => {
+    const cur = db.plants.find(p => p.sensorCh === +n);
+    return `<div class="field"><label>CH${n} · 지금 ${v.pct}%<span class="hint">${agoText(Date.now() - v.t * 1000)}</span></label>
+      <select data-link="${n}"><option value="">연결 안 함</option>${db.plants.map(p => `<option value="${p.id}" ${cur === p ? "selected" : ""}>${esc(p.name)}</option>`).join("")}</select></div>`;
+  }).join("");
+}
+function bindChannelLinks() {
+  for (const sel of document.querySelectorAll("[data-link]")) sel.onchange = async () => {
+    const ch = +sel.dataset.link;
+    for (const p of db.plants) if (p.sensorCh === ch && p.id !== sel.value) {           // one pot per channel
+      p.sensorCh = null; db.log.push({ id: uid(), plant: p.id, type: "edit", date: today(), note: `토양 센서 CH${ch} → 없음` });
+    }
+    const p = db.plants.find(x => x.id === sel.value);
+    if (p) { const old = p.sensorCh; p.sensorCh = ch; db.log.push({ id: uid(), plant: p.id, type: "edit", date: today(), note: `토양 센서 ${old ? "CH" + old : "없음"} → CH${ch}` }); }
+    save();
+    try { await syncSensors(true); } catch (e) {}
+    toast(p ? `CH${ch}을 ${p.name}에 연결했습니다` : `CH${ch} 연결을 풀었습니다`);
+    document.getElementById("elink").innerHTML = channelLinksHtml(); bindChannelLinks();
+  };
 }
 function bindEcoSettings() {
   const b = document.getElementById("efind"), out = document.getElementById("eres"); if (!b) return;
+  bindChannelLinks();
   b.onclick = async () => {
     if (!ecoReady()) { out.textContent = "키 2개를 먼저 넣어 주세요."; return; }
     b.disabled = true; out.textContent = "찾는 중…";
@@ -166,7 +191,8 @@ function bindEcoSettings() {
       const d = list[0]; setKey("ecowitt_mac", d.mac); setKey("ecowitt_name", d.name);
       const c = await syncSensors(true), chs = Object.entries(c?.channels || {});
       out.innerHTML = `<b style="color:var(--green)">찾음</b> — ${esc(d.name)} (${esc(d.mac)})${list.length > 1 ? ` 외 ${list.length - 1}대` : ""}<br>` +
-        (chs.length ? `토양 센서: ${chs.map(([n, v]) => `CH${n} ${v.pct}%`).join(", ")}` : "토양 센서 값이 아직 없습니다");
+        (chs.length ? `토양 센서: ${chs.map(([n, v]) => `CH${n} ${v.pct}%`).join(", ")} — 아래에서 화분을 골라 주세요` : "토양 센서 값이 아직 없습니다");
+      document.getElementById("elink").innerHTML = channelLinksHtml(); bindChannelLinks();
     } catch (e) { out.innerHTML = `<b style="color:var(--red)">안 됨</b> — ${esc(e.message)}`; }
     finally { b.disabled = false; }
   };
