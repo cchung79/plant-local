@@ -67,7 +67,9 @@ body.locked { overflow: hidden; }
 .sheet header button { border: 0; background: none; color: var(--green); font: inherit; font-size: 17px; padding: 4px 0; }
 .suggest { border-left: 4px solid var(--green); }
 .suggest p { margin: 0 0 10px; }
-.log { font-size: 14px; display: grid; grid-template-columns: 88px 1fr auto; gap: 4px 10px; align-items: center; }
+.log { font-size: 14px; display: grid; grid-template-columns: 88px 1fr auto auto; gap: 4px 6px; align-items: center; }
+.log button.del { color: var(--red); }
+.log button.del.sure { background: var(--red); color: #fff; border-radius: 8px; padding: 4px 8px; }
 .log .d { color: var(--sub); }
 .log button { border: 0; background: none; color: var(--sub); font-size: 13px; }
 .toggle { display: flex; align-items: center; justify-content: space-between; padding: 6px 0; }
@@ -317,7 +319,7 @@ function drawPlant(p, isNew) {
     </div>
 
     <h2>기록</h2>
-    <div class="card log">${logs.length ? logs.map(l => `<span class="d">${l.date}</span><span>${TYPE[l.type]}${l.type === "moist" ? ` ${l.value}%` : ""}${l.type === "snooze" ? ` (${l.kind === "water" ? "물" : "비료"} → ${md(l.until)})` : ""}${l.type === "edit" ? ` ${esc(l.note)}` : ""}${l.note && l.type !== "edit" ? ` <span class="small">${esc(l.note)}</span>` : ""}${l.id === baseW || l.id === baseF ? ` <b style="color:var(--green)">← 다음 날짜 기준</b>` : ""}</span><button data-edit="${l.id}">수정</button>`).join("") : `<span class="small" style="grid-column:1/-1">기록이 없습니다</span>`}</div>
+    <div class="card log">${logs.length ? logs.map(l => `<span class="d">${l.date}</span><span>${TYPE[l.type]}${l.type === "moist" ? ` ${l.value}%` : ""}${l.type === "snooze" ? ` (${l.kind === "water" ? "물" : "비료"} → ${md(l.until)})` : ""}${l.type === "edit" ? ` ${esc(l.note)}` : ""}${l.note && l.type !== "edit" ? ` <span class="small">${esc(l.note)}</span>` : ""}${l.id === baseW || l.id === baseF ? ` <b style="color:var(--green)">← 다음 날짜 기준</b>` : ""}</span><button data-edit="${l.id}">수정</button><button class="del" data-del="${l.id}">삭제</button>`).join("") : `<span class="small" style="grid-column:1/-1">기록이 없습니다</span>`}</div>
     <button class="btn btn-ghost" id="delp" style="width:100%;margin-top:16px;color:var(--red)">이 식물 지우기</button>
   </main>`;
 
@@ -359,13 +361,23 @@ function drawPlant(p, isNew) {
   };
   $("fon").onchange = e => { p.fert.on = e.target.checked; db.log.push({ id: uid(), plant: p.id, type: "edit", date: today(), note: `비료 일정 ${p.fert.on ? "켬" : "끔"}` }); save(); drawPlant(p); };
   for (const inp of sheet.querySelectorAll("[data-t]")) inp.onchange = () => { p[inp.dataset.t] = inp.value.trim(); save(); if (inp.dataset.t === "name") drawPlant(p); };
+  for (const b of sheet.querySelectorAll("[data-del]")) b.onclick = () => {
+    if (!b.classList.contains("sure")) {
+      b.classList.add("sure"); b.textContent = "정말 삭제?";
+      setTimeout(() => { if (b.isConnected) { b.classList.remove("sure"); b.textContent = "삭제"; } }, 4000);
+      return;
+    }
+    const l = db.log.find(x => x.id === b.dataset.del); if (!l) return;
+    db.log = db.log.filter(x => x !== l); save(); drawPlant(p);
+    toast(`${md(l.date)} ${({ water: "물", fert: "비료", moist: "수분", snooze: "미룸", edit: "변경", diag: "상태 묻기" })[l.type]} 기록을 삭제했습니다`);
+  };
   for (const b of sheet.querySelectorAll("[data-edit]")) b.onclick = () => {
     const l = db.log.find(x => x.id === b.dataset.edit); if (!l) return;
     const box = document.createElement("div"); box.style.gridColumn = "1 / -1";
     box.innerHTML = `<div class="card" style="margin:4px 0;background:var(--bg)">
       <div class="unit"><span>날짜</span><input type="date" class="ed" value="${l.date}" max="${today()}">${l.type === "moist" ? `<input type="number" class="ev" inputmode="numeric" min="0" max="100" value="${l.value}" style="width:90px"><span>%</span>` : ""}</div>
       <div class="row3" style="margin-top:8px"><button class="btn btn-moist es">저장</button><button class="btn btn-ghost ex" style="color:var(--red)">지우기</button><button class="btn btn-ghost ec">취소</button></div></div>`;
-    const dEl = b.previousElementSibling.previousElementSibling;   // the date cell of this row
+    const dEl = b.previousElementSibling.previousElementSibling;   // the date cell of this row (date, text, 수정, 삭제)
     dEl.before(box);
     box.querySelector(".ec").onclick = () => box.remove();
     box.querySelector(".ex").onclick = () => { if (confirm(`${l.date} 기록을 지울까요?`)) { db.log = db.log.filter(x => x !== l); save(); drawPlant(p); toast("지웠습니다"); } };
@@ -475,7 +487,7 @@ if (location.hash.startsWith("#import=")) {
 const removed = dedupe(); if (removed) setTimeout(() => toast(`같은 날 중복 기록 ${removed}건을 정리했습니다`), 300);
 save(); render();
 // ---- updates: check on every open/return; when a new version takes over, reload once (not while a plant is open) ----
-const APP_VERSION = "8";
+const APP_VERSION = "9";
 let pendingReload = false;
 if ("serviceWorker" in navigator && (location.protocol === "https:" || ["localhost", "127.0.0.1"].includes(location.hostname))) {
   const hadController = !!navigator.serviceWorker.controller;
