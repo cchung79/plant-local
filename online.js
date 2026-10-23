@@ -384,7 +384,7 @@ function homeContext() {
 const CHAT_SYSTEM = "당신은 한국 가정의 실내 식물을 함께 돌보는 도우미입니다. 주인의 식물 기록(일정, 물 준 날, 수분계 값)을 근거로 답하고, " +
   "기록에 없는 것은 추측이라고 밝힙니다. 사진이 있으면 사진에서 보이는 것을 먼저 말합니다. 일정을 바꾸자고 할 때는 어느 식물의 어느 계절 간격을 며칠로 할지 구체적으로 씁니다. " +
   "한국어로, 휴대폰 화면에서 읽기 좋게 짧은 문단과 목록으로 답합니다.";
-let chatPhoto = null;
+let chatPhoto = null, chatDraft = "";      // the photo and the question being written survive any redraw
 function chatThread(target) { db.chats ??= {}; return (db.chats[target] ??= []); }
 function mdLite(t) {      // **bold**, headings, bullets → simple HTML
   return esc(t).replace(/\*\*(.+?)\*\*/g, "<b>$1</b>").replace(/^#{1,6}\s*(.+)$/gm, "<b>$1</b>")
@@ -408,7 +408,7 @@ function renderChat() {
     : `<div class="empty">예: "이번 주에 물 줄 식물 알려 줘", "떡갈고무나무 잎이 처져요", "베란다 서향에 새로 둘 만한 식물은?"</div>`}</div>
   <div class="card">
     <div id="cprev">${chatPhoto ? `<img src="${chatPhoto}" style="max-height:120px;border-radius:10px">` : ""}</div>
-    <textarea id="cq" rows="2" placeholder="질문을 쓰세요"></textarea>
+    <textarea id="cq" rows="2" placeholder="질문을 쓰세요">${esc(chatDraft)}</textarea>
     <div class="row3" style="margin-top:8px">
       <label class="btn btn-ghost" style="text-align:center">${chatPhoto ? "사진 바꾸기" : "사진"}<input type="file" id="cph" accept="image/*" capture="environment" style="display:none"></label>
       <button class="btn btn-ghost" id="cclear" ${th.length ? "" : "disabled"}>새 대화</button>
@@ -417,15 +417,15 @@ function renderChat() {
     <div class="small" id="cmsg"></div>
   </div>`;
   const $ = id => document.getElementById(id);
+  $("cq").oninput = () => { chatDraft = $("cq").value; };
   $("ct").onchange = () => { db.chatTarget = $("ct").value; save(); renderChat(); };
   $("cph").onchange = async e => {
     const f = e.target.files[0]; if (!f) return;
-    const q = $("cq").value;
-    try { chatPhoto = (await readImage(f, 1280, 0.85)).dataUrl; renderChat(); document.getElementById("cq").value = q; } catch (err) { toast(err.message); }
+    try { chatPhoto = (await readImage(f, 1280, 0.85)).dataUrl; renderChat(); } catch (err) { toast(err.message); }
   };
   $("cclear").onclick = () => { if (confirm("이 대화를 지우고 새로 시작할까요?")) { db.chats[target] = []; save(); renderChat(); } };
   $("csend").onclick = async () => {
-    const q = $("cq").value.trim(); if (!q && !chatPhoto) { toast("질문이나 사진을 넣어 주세요"); return; }
+    const q = (document.getElementById("cq").value || chatDraft).trim(); if (!q && !chatPhoto) { toast("질문이나 사진을 넣어 주세요"); return; }
     const ctx = target === "home" ? homeContext() : plantContext(db.plants.find(p => p.id === target));
     // earlier turns go as text (photos are not resent); the new turn carries the photo and the current records
     const msgs = th.slice(-20).map(m => ({ role: m.role, content: m.text + (m.photo ? "\n(이때 사진을 보냈음)" : "") }));
@@ -437,7 +437,7 @@ function renderChat() {
       const a = await claude(CHAT_SYSTEM, msgs, null);
       const at = md(today()) + " " + new Date().toTimeString().slice(0, 5);
       th.push({ role: "user", text: q || "(사진)", photo: !!chatPhoto, at }, { role: "assistant", text: String(a), at });
-      chatPhoto = null; save(); renderChat();
+      chatPhoto = null; chatDraft = ""; save(); renderChat();
       document.getElementById("chatlog").lastElementChild?.scrollIntoView({ block: "start" });
     } catch (err) {
       $("cmsg").innerHTML = `<span style="color:var(--red)">${esc(err.message)}</span>`;
