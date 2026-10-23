@@ -106,7 +106,8 @@ async function claude(system, content, schema) {
   sdkPromise ??= import(SDK_URL);
   const { default: Anthropic } = await sdkPromise;
   const client = new Anthropic({ apiKey: k, dangerouslyAllowBrowser: true });   // the key is the owner's own, kept on this phone
-  const body = { model: CLAUDE_MODEL, max_tokens: 16000, system, messages: [{ role: "user", content }],
+  const messages = Array.isArray(content) && content[0]?.role ? content : [{ role: "user", content }];
+  const body = { model: CLAUDE_MODEL, max_tokens: 16000, system, messages,
                  output_config: { effort: "medium", ...(schema ? { format: { type: "json_schema", schema } } : {}) } };
   let res;
   try {
@@ -364,5 +365,83 @@ function bindKeys() {
     try { const r = await testClaude(); out.innerHTML = `<b style="color:var(--green)">연결됨</b> — Claude 답: ${esc(r)}`; }
     catch (e) { out.innerHTML = `<b style="color:var(--red)">안 됨</b> — ${esc(e.message)}`; }
     btn.disabled = false;
+  };
+}
+
+
+// ---- "Claude에게 묻기" tab: a conversation about the whole home or one plant, with the records attached ----
+function homeContext() {
+  const s = season(today());
+  const lines = db.plants.map(p => {
+    const w = due(p, "water"), f = due(p, "fert"), m = lastMoist(p), lw = last(p.id, "water");
+    return `- ${p.name} (${p.species || "?"}) @ ${p.location || "?"}: 물 ${p.water.warm ?? "-"}/${p.water.cold ?? "-"}일, 마지막 물 ${lw ? lw.date : "기록 없음"}, ` +
+      `다음 물 ${dueText(w) || "-"}, 비료 ${p.fert.on ? `${p.fert.warm ?? "안 함"}/${p.fert.cold ?? "안 함"}일, 다음 ${f.none ? "안 함" : dueText(f)}` : "꺼짐"}` +
+      `, 기준 수분 ${p.moistureMin}%${m ? `, 최근 수분 ${m.value}% (${m.date})` : ""}${p.note ? `, 메모: ${p.note}` : ""}`;
+  });
+  return `오늘 ${today()}, ${SEASON_KO[s]} (따뜻한 계절 ${monthsText("warm")}, 추운 계절 ${monthsText("cold")}).\n` +
+    `물/비료 간격은 "따뜻한 계절/추운 계절" 일수이고 주인이 직접 정한 값입니다. 수분계는 0~100%.\n우리 집 식물 ${db.plants.length}그루:\n${lines.join("\n")}`;
+}
+const CHAT_SYSTEM = "당신은 한국 가정의 실내 식물을 함께 돌보는 도우미입니다. 주인의 식물 기록(일정, 물 준 날, 수분계 값)을 근거로 답하고, " +
+  "기록에 없는 것은 추측이라고 밝힙니다. 사진이 있으면 사진에서 보이는 것을 먼저 말합니다. 일정을 바꾸자고 할 때는 어느 식물의 어느 계절 간격을 며칠로 할지 구체적으로 씁니다. " +
+  "한국어로, 휴대폰 화면에서 읽기 좋게 짧은 문단과 목록으로 답합니다.";
+let chatPhoto = null;
+function chatThread(target) { db.chats ??= {}; return (db.chats[target] ??= []); }
+function mdLite(t) {      // **bold**, headings, bullets → simple HTML
+  return esc(t).replace(/\*\*(.+?)\*\*/g, "<b>$1</b>").replace(/^#{1,6}\s*(.+)$/gm, "<b>$1</b>")
+    .replace(/^\s*[-•*]\s+/gm, "• ").replace(/\n/g, "<br>");
+}
+function renderChat() {
+  const k = keys();
+  const target = db.chatTarget && (db.chatTarget === "home" || db.plants.some(p => p.id === db.chatTarget)) ? db.chatTarget : "home";
+  const th = chatThread(target), name = target === "home" ? "우리 집 전체" : db.plants.find(p => p.id === target).name;
+  view.innerHTML = `
+  <div class="card" style="margin-top:12px">
+    <label class="small">무엇에 대해 물을까요?</label>
+    <select id="ct" style="margin-top:4px"><option value="home">우리 집 전체 (${db.plants.length}그루)</option>
+      ${db.plants.map(p => `<option value="${p.id}" ${p.id === target ? "selected" : ""}>${esc(p.name)} · ${esc(p.location)}</option>`).join("")}</select>
+    <p class="small" style="margin:6px 0 0">${esc(name)}의 일정과 최근 기록이 질문과 함께 Claude에게 갑니다.</p>
+  </div>
+  ${k.claude ? "" : `<div class="card" style="border-color:var(--red)"><b>Claude 키가 없습니다</b><p class="small" style="margin-bottom:0">설정 → 온라인 기능 → Claude 칸에 sk-ant-api03-로 시작하는 키를 넣고 [연결 확인]을 눌러 주세요.</p></div>`}
+  <div id="chatlog">${th.length ? th.map(m => `<div class="card" style="${m.role === "user" ? "border-color:var(--green);margin-left:28px" : "margin-right:12px"}">
+      <div class="small">${m.role === "user" ? "나" : "Claude"} · ${esc(m.at || "")}${m.photo ? " · 사진 첨부" : ""}</div>
+      <div style="margin-top:4px">${m.role === "user" ? esc(m.text).replace(/\n/g, "<br>") : mdLite(m.text)}</div></div>`).join("")
+    : `<div class="empty">예: "이번 주에 물 줄 식물 알려 줘", "떡갈고무나무 잎이 처져요", "베란다 서향에 새로 둘 만한 식물은?"</div>`}</div>
+  <div class="card">
+    <div id="cprev">${chatPhoto ? `<img src="${chatPhoto}" style="max-height:120px;border-radius:10px">` : ""}</div>
+    <textarea id="cq" rows="2" placeholder="질문을 쓰세요"></textarea>
+    <div class="row3" style="margin-top:8px">
+      <label class="btn btn-ghost" style="text-align:center">${chatPhoto ? "사진 바꾸기" : "사진"}<input type="file" id="cph" accept="image/*" capture="environment" style="display:none"></label>
+      <button class="btn btn-ghost" id="cclear" ${th.length ? "" : "disabled"}>새 대화</button>
+      <button class="btn btn-moist" id="csend" ${k.claude ? "" : "disabled"}>보내기</button>
+    </div>
+    <div class="small" id="cmsg"></div>
+  </div>`;
+  const $ = id => document.getElementById(id);
+  $("ct").onchange = () => { db.chatTarget = $("ct").value; save(); renderChat(); };
+  $("cph").onchange = async e => {
+    const f = e.target.files[0]; if (!f) return;
+    const q = $("cq").value;
+    try { chatPhoto = (await readImage(f, 1280, 0.85)).dataUrl; renderChat(); document.getElementById("cq").value = q; } catch (err) { toast(err.message); }
+  };
+  $("cclear").onclick = () => { if (confirm("이 대화를 지우고 새로 시작할까요?")) { db.chats[target] = []; save(); renderChat(); } };
+  $("csend").onclick = async () => {
+    const q = $("cq").value.trim(); if (!q && !chatPhoto) { toast("질문이나 사진을 넣어 주세요"); return; }
+    const ctx = target === "home" ? homeContext() : plantContext(db.plants.find(p => p.id === target));
+    // earlier turns go as text (photos are not resent); the new turn carries the photo and the current records
+    const msgs = th.slice(-20).map(m => ({ role: m.role, content: m.text + (m.photo ? "\n(이때 사진을 보냈음)" : "") }));
+    const content = [{ type: "text", text: `[지금 기록]\n${ctx}\n\n[질문]\n${q || "사진 속 식물 상태를 봐 주세요."}` }];
+    if (chatPhoto) content.unshift({ type: "image", source: { type: "base64", media_type: "image/jpeg", data: b64(chatPhoto) } });
+    msgs.push({ role: "user", content });
+    $("csend").disabled = true; $("csend").textContent = "생각하는 중…"; $("cmsg").textContent = "";
+    try {
+      const a = await claude(CHAT_SYSTEM, msgs, null);
+      const at = md(today()) + " " + new Date().toTimeString().slice(0, 5);
+      th.push({ role: "user", text: q || "(사진)", photo: !!chatPhoto, at }, { role: "assistant", text: String(a), at });
+      chatPhoto = null; save(); renderChat();
+      document.getElementById("chatlog").lastElementChild?.scrollIntoView({ block: "start" });
+    } catch (err) {
+      $("cmsg").innerHTML = `<span style="color:var(--red)">${esc(err.message)}</span>`;
+      $("csend").disabled = false; $("csend").textContent = "보내기";
+    }
   };
 }

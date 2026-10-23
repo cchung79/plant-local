@@ -31,7 +31,7 @@ header h1 { margin: 0; font-size: 20px; }
 header .sub { color: var(--sub); font-size: 13px; }
 main { padding: 12px 16px; max-width: 640px; margin: 0 auto; }
 nav { position: fixed; bottom: 0; left: 0; right: 0; display: flex; background: var(--card); border-top: 1px solid var(--line); padding-bottom: env(safe-area-inset-bottom); z-index: 5; }
-nav button { flex: 1; border: 0; background: none; color: var(--sub); font: inherit; font-size: 14px; padding: 12px 0; }
+nav button { flex: 1; border: 0; background: none; color: var(--sub); font: inherit; font-size: 14px; padding: 12px 0; white-space: nowrap; }
 nav button.on { color: var(--green); font-weight: 700; }
 h2 { font-size: 15px; color: var(--sub); margin: 18px 0 8px; font-weight: 600; }
 .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 12px 14px; margin-bottom: 10px; }
@@ -48,6 +48,9 @@ h2 { font-size: 15px; color: var(--sub); margin: 18px 0 8px; font-weight: 600; }
 .empty { color: var(--sub); text-align: center; padding: 24px 0; }
 input, select, textarea { font: inherit; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; width: 100%; }
 input[type=number] { text-align: right; }
+select { -webkit-appearance: none; appearance: none; background-color: var(--bg); color: var(--ink); padding-right: 32px;
+         background-image: linear-gradient(45deg, transparent 50%, var(--sub) 50%), linear-gradient(135deg, var(--sub) 50%, transparent 50%);
+         background-position: calc(100% - 18px) 50%, calc(100% - 12px) 50%; background-size: 6px 6px; background-repeat: no-repeat; }
 .btn { border: 0; border-radius: 12px; padding: 12px 14px; font: inherit; font-weight: 700; cursor: pointer; }
 .btn-water { background: var(--blue); color: #fff; }
 .btn-fert { background: var(--brown); color: #fff; }
@@ -84,6 +87,7 @@ body.locked { overflow: hidden; }
 <nav>
   <button data-tab="todo" class="on">할 일</button>
   <button data-tab="plants">식물</button>
+  <button data-tab="ask">Claude에게 묻기</button>
   <button data-tab="settings">설정</button>
 </nav>
 <div class="toast" id="toast"></div>
@@ -297,6 +301,7 @@ function drawPlant(p, isNew) {
     </div>
     <div id="sg"></div>
     ${diagCardHtml(p)}
+    <button class="btn btn-ghost" id="toask" style="width:100%;margin-top:8px">이 식물에 대해 Claude와 대화하기 →</button>
 
     <h2>내 일정 (지금은 ${SEASON_KO[s]})</h2>
     <div class="card">
@@ -392,6 +397,7 @@ function drawPlant(p, isNew) {
     if (confirm(`"${p.name}"을(를) 지울까요? 기록도 함께 지워집니다.`)) { db.plants = db.plants.filter(x => x !== p); db.log = db.log.filter(l => l.plant !== p.id); save(); closeSheet(); }
   };
   bindDiag(p);
+  $("toask").onclick = () => { db.chatTarget = p.id; save(); tab = "ask"; sheet?.remove(); sheet = null; document.body.classList.remove("locked"); render(); window.scrollTo(0, 0); };
   if (isNew) sheet.querySelector('[data-t="name"]').focus();
 }
 function careRefText(p) {
@@ -458,11 +464,12 @@ function header() { document.getElementById("today").textContent = `${today()} �
 function render() {
   header();
   for (const b of document.querySelectorAll("nav button")) b.classList.toggle("on", b.dataset.tab === tab);
-  ({ todo: renderTodo, plants: renderPlants, settings: renderSettings })[tab]();
+  ({ todo: renderTodo, plants: renderPlants, ask: renderChat, settings: renderSettings })[tab]();
 }
 document.querySelector("nav").onclick = e => { const t = e.target.dataset.tab; if (t) { tab = t; sheet?.remove(); sheet = null; document.body.classList.remove("locked"); render(); window.scrollTo(0, 0); } };
 view.onclick = e => { const c = e.target.closest("[data-open]"); if (c) openPlant(c.dataset.open); };
-document.addEventListener("visibilitychange", () => { if (!document.hidden && !sheet) render(); });
+// coming back to the app refreshes the lists (dates move on); never redraw a screen with a photo/file picker in use
+document.addEventListener("visibilitychange", () => { if (!document.hidden && !sheet && (tab === "todo" || tab === "plants")) render(); });
 
 db = load() || fromSeed();
 function dedupe() {
@@ -487,7 +494,7 @@ if (location.hash.startsWith("#import=")) {
 const removed = dedupe(); if (removed) setTimeout(() => toast(`같은 날 중복 기록 ${removed}건을 정리했습니다`), 300);
 save(); render();
 // ---- updates: check on every open/return; when a new version takes over, reload once (not while a plant is open) ----
-const APP_VERSION = "10";
+const APP_VERSION = "11";
 let pendingReload = false;
 if ("serviceWorker" in navigator && (location.protocol === "https:" || ["localhost", "127.0.0.1"].includes(location.hostname))) {
   const hadController = !!navigator.serviceWorker.controller;
