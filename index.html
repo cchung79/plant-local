@@ -244,7 +244,7 @@ function renderSettings() {
       const d = JSON.parse(await f.text());
       if (!Array.isArray(d.plants) || !Array.isArray(d.log)) throw 0;
       if (!confirm(`이 폰의 데이터를 파일 내용(식물 ${d.plants.length}그루, 기록 ${d.log.length}건)으로 바꿀까요?`)) return;
-      db = d; save(); toast("가져왔습니다"); render();
+      db = d; dedupe(); save(); toast("가져왔습니다"); render();
     } catch (err) { toast("이 파일은 식물 백업 파일이 아닙니다"); }
   };
   document.getElementById("reset").onclick = () => {
@@ -269,6 +269,7 @@ function drawPlant(p, isNew) {
   const s = season(today()), wd = due(p, "water"), fd = due(p, "fert"), m = lastMoist(p);
   const lw = last(p.id, "water"), lf = last(p.id, "fert");
   const logs = logsOf(p.id).slice(0, 30);
+  const baseW = last(p.id, "water")?.id, baseF = last(p.id, "fert")?.id;
   const TYPE = { water: "물", fert: "비료", moist: "수분", snooze: "미룸", edit: "간격 변경", diag: "상태 묻기" };
   sheet.innerHTML = `
   <header><button id="back">‹ 목록</button><h1 style="flex:1;font-size:18px;margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(p.name)}</h1></header>
@@ -277,7 +278,7 @@ function drawPlant(p, isNew) {
     <div class="small">${esc(p.species)} · ${esc(p.location)}</div>
     <div class="card" style="margin-top:10px">
       <div class="row2" style="margin-bottom:8px">
-        <div><div class="small">물</div><b>${dueText(wd) || "—"}</b><div class="small">${lw ? `마지막 ${md(lw.date)} (${diff(lw.date, today())}일 전)` : "기록 없음"}</div></div>
+        <div><div class="small">물</div><b>${dueText(wd) || "—"}</b><div class="small">${lw ? `마지막 ${md(lw.date)} (${diff(lw.date, today())}일 전) · 아래 기록 기준` : "기록 없음"}</div></div>
         <div><div class="small">비료</div><b>${fd.none ? (p.fert.on ? "이번 계절 안 함" : "비료 일정 꺼짐") : dueText(fd)}</b>${fd.withWater ? `<div class="small">밀려서 다음 물 줄 때 같이</div>` : ""}<div class="small">${lf ? `마지막 ${md(lf.date)} (${diff(lf.date, today())}일 전)` : "기록 없음"}</div></div>
       </div>
       <div class="small">흙 수분: ${m ? `<b>${m.value}%</b> (${md(m.date)}) · 기준 ${p.moistureMin}% 이하면 물` : `아직 안 잼 · 기준 ${p.moistureMin}% 이하면 물`}</div>
@@ -312,7 +313,7 @@ function drawPlant(p, isNew) {
     </div>
 
     <h2>기록</h2>
-    <div class="card log">${logs.length ? logs.map(l => `<span class="d">${l.date}</span><span>${TYPE[l.type]}${l.type === "moist" ? ` ${l.value}%` : ""}${l.type === "snooze" ? ` (${l.kind === "water" ? "물" : "비료"} → ${md(l.until)})` : ""}${l.type === "edit" ? ` ${esc(l.note)}` : ""}${l.note && l.type !== "edit" ? ` <span class="small">${esc(l.note)}</span>` : ""}</span><button data-edit="${l.id}">고치기</button>`).join("") : `<span class="small" style="grid-column:1/-1">기록이 없습니다</span>`}</div>
+    <div class="card log">${logs.length ? logs.map(l => `<span class="d">${l.date}</span><span>${TYPE[l.type]}${l.type === "moist" ? ` ${l.value}%` : ""}${l.type === "snooze" ? ` (${l.kind === "water" ? "물" : "비료"} → ${md(l.until)})` : ""}${l.type === "edit" ? ` ${esc(l.note)}` : ""}${l.note && l.type !== "edit" ? ` <span class="small">${esc(l.note)}</span>` : ""}${l.id === baseW || l.id === baseF ? ` <b style="color:var(--green)">← 다음 날짜 기준</b>` : ""}</span><button data-edit="${l.id}">수정</button>`).join("") : `<span class="small" style="grid-column:1/-1">기록이 없습니다</span>`}</div>
     <button class="btn btn-ghost" id="delp" style="width:100%;margin-top:16px;color:var(--red)">이 식물 지우기</button>
   </main>`;
 
@@ -328,6 +329,9 @@ function drawPlant(p, isNew) {
   showDay();
   $("back").onclick = closeSheet;
   const add = (type, extra = {}) => {
+    if ((type === "water" || type === "fert") && logsOf(p.id, type).some(x => x.date === d())) {
+      toast(`${md(d())} ${type === "water" ? "물" : "비료"} 기록은 이미 있습니다`); return;
+    }
     const newer = (type === "water" || type === "fert") ? logsOf(p.id, type).find(x => x.date > d()) : null;
     db.log.push({ id: uid(), plant: p.id, type, date: d(), ...extra }); save();
     if (newer) setTimeout(() => showSuggest(p, {
@@ -445,6 +449,15 @@ view.onclick = e => { const c = e.target.closest("[data-open]"); if (c) openPlan
 document.addEventListener("visibilitychange", () => { if (!document.hidden && !sheet) render(); });
 
 db = load() || fromSeed();
+function dedupe() {
+  const seen = new Set(), before = db.log.length;
+  db.log = db.log.filter(l => {
+    if (l.type !== "water" && l.type !== "fert") return true;
+    const k = `${l.plant}|${l.type}|${l.date}`;
+    if (seen.has(k)) return false; seen.add(k); return true;
+  });
+  return before - db.log.length;
+}
 // one-time setup link: #import=<base64url JSON>. The part after # never leaves the phone (it is not sent to the web server).
 if (location.hash.startsWith("#import=")) {
   try {
@@ -455,6 +468,7 @@ if (location.hash.startsWith("#import=")) {
   } catch (e) { toast("데이터 링크를 읽지 못했습니다"); }
   history.replaceState(null, "", location.pathname);
 }
+const removed = dedupe(); if (removed) setTimeout(() => toast(`같은 날 중복 기록 ${removed}건을 정리했습니다`), 300);
 save(); render();
 if ("serviceWorker" in navigator && location.protocol === "https:") navigator.serviceWorker.register("sw.js").catch(() => {});
 </script>
