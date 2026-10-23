@@ -283,9 +283,9 @@ function drawPlant(p, isNew) {
     </div>
 
     <div class="card">
+      <div class="unit" style="margin-bottom:8px"><span>기록할 날짜</span><input type="date" id="dt" value="${sheet.dataset.date || today()}" max="${today()}"><button class="btn btn-ghost" id="dtoday" style="padding:8px 10px;white-space:nowrap">오늘</button></div>
       <div class="row2" style="margin-bottom:8px"><input type="number" id="mv" inputmode="numeric" min="0" max="100" placeholder="수분계 %"><button class="btn btn-moist" id="mbtn">수분 기록</button></div>
       <div class="row3"><button class="btn btn-water" id="wbtn">물 줌</button><button class="btn btn-fert" id="fbtn">비료 줌</button><button class="btn btn-ghost" id="bbtn">물+비료</button></div>
-      <div class="unit" style="margin-top:8px"><span>날짜</span><input type="date" id="dt" value="${today()}" max="${today()}"></div>
     </div>
     <div id="sg"></div>
     ${diagCardHtml(p)}
@@ -311,19 +311,27 @@ function drawPlant(p, isNew) {
     </div>
 
     <h2>기록</h2>
-    <div class="card log">${logs.length ? logs.map(l => `<span class="d">${l.date}</span><span>${TYPE[l.type]}${l.type === "moist" ? ` ${l.value}%` : ""}${l.type === "snooze" ? ` (${l.kind === "water" ? "물" : "비료"} → ${md(l.until)})` : ""}${l.type === "edit" ? ` ${esc(l.note)}` : ""}${l.note && l.type !== "edit" ? ` <span class="small">${esc(l.note)}</span>` : ""}</span><button data-del="${l.id}">지우기</button>`).join("") : `<span class="small" style="grid-column:1/-1">기록이 없습니다</span>`}</div>
+    <div class="card log">${logs.length ? logs.map(l => `<span class="d">${l.date}</span><span>${TYPE[l.type]}${l.type === "moist" ? ` ${l.value}%` : ""}${l.type === "snooze" ? ` (${l.kind === "water" ? "물" : "비료"} → ${md(l.until)})` : ""}${l.type === "edit" ? ` ${esc(l.note)}` : ""}${l.note && l.type !== "edit" ? ` <span class="small">${esc(l.note)}</span>` : ""}</span><button data-edit="${l.id}">고치기</button>`).join("") : `<span class="small" style="grid-column:1/-1">기록이 없습니다</span>`}</div>
     <button class="btn btn-ghost" id="delp" style="width:100%;margin-top:16px;color:var(--red)">이 식물 지우기</button>
   </main>`;
 
   const $ = id => sheet.querySelector("#" + id);
-  const d = () => $("dt").value || today();
+  const d = () => { const v = $("dt").value || sheet.dataset.date || today(); return v > today() ? today() : v; };
+  const showDay = () => {
+    const v = d(), tag = v === today() ? "" : ` · ${md(v)}`;
+    $("wbtn").textContent = "물 줌" + tag; $("fbtn").textContent = "비료 줌" + tag; $("bbtn").textContent = "물+비료" + tag; $("mbtn").textContent = "수분 기록" + tag;
+  };
+  const pick = () => { if ($("dt").value) sheet.dataset.date = $("dt").value; showDay(); };
+  for (const ev of ["input", "change", "blur"]) $("dt").addEventListener(ev, pick);
+  $("dtoday").onclick = () => { delete sheet.dataset.date; $("dt").value = today(); showDay(); };
+  showDay();
   $("back").onclick = closeSheet;
   const add = (type, extra = {}) => { db.log.push({ id: uid(), plant: p.id, type, date: d(), ...extra }); save(); };
-  $("wbtn").onclick = () => { const sg = afterWater(p, d()); add("water"); drawPlant(p); toast("물 준 날을 기록했습니다"); if (sg) showSuggest(p, sg); };
-  $("fbtn").onclick = () => { add("fert"); drawPlant(p); toast("비료 준 날을 기록했습니다"); };
-  $("bbtn").onclick = () => { const sg = afterWater(p, d()); add("water"); add("fert"); drawPlant(p); toast("물과 비료를 기록했습니다"); if (sg) showSuggest(p, sg); };
+  $("wbtn").onclick = () => { pick(); const sg = afterWater(p, d()); add("water"); drawPlant(p); toast(`${md(d())} 물 준 날을 기록했습니다`); if (sg) showSuggest(p, sg); };
+  $("fbtn").onclick = () => { pick(); add("fert"); drawPlant(p); toast(`${md(d())} 비료 준 날을 기록했습니다`); };
+  $("bbtn").onclick = () => { pick(); const sg = afterWater(p, d()); add("water"); add("fert"); drawPlant(p); toast(`${md(d())} 물과 비료를 기록했습니다`); if (sg) showSuggest(p, sg); };
   $("mbtn").onclick = () => {
-    const v = parseInt($("mv").value, 10);
+    pick(); const v = parseInt($("mv").value, 10);
     if (!(v >= 0 && v <= 100)) { toast("0~100 사이 숫자를 넣어 주세요"); return; }
     add("moist", { value: v }); drawPlant(p); showSuggest(p, afterMoist(p, v, d()));
   };
@@ -335,9 +343,22 @@ function drawPlant(p, isNew) {
   };
   $("fon").onchange = e => { p.fert.on = e.target.checked; db.log.push({ id: uid(), plant: p.id, type: "edit", date: today(), note: `비료 일정 ${p.fert.on ? "켬" : "끔"}` }); save(); drawPlant(p); };
   for (const inp of sheet.querySelectorAll("[data-t]")) inp.onchange = () => { p[inp.dataset.t] = inp.value.trim(); save(); if (inp.dataset.t === "name") drawPlant(p); };
-  for (const b of sheet.querySelectorAll("[data-del]")) b.onclick = () => {
-    const l = db.log.find(x => x.id === b.dataset.del);
-    if (l && confirm(`${l.date} 기록을 지울까요?`)) { db.log = db.log.filter(x => x !== l); save(); drawPlant(p); }
+  for (const b of sheet.querySelectorAll("[data-edit]")) b.onclick = () => {
+    const l = db.log.find(x => x.id === b.dataset.edit); if (!l) return;
+    const box = document.createElement("div"); box.style.gridColumn = "1 / -1";
+    box.innerHTML = `<div class="card" style="margin:4px 0;background:var(--bg)">
+      <div class="unit"><span>날짜</span><input type="date" class="ed" value="${l.date}" max="${today()}">${l.type === "moist" ? `<input type="number" class="ev" inputmode="numeric" min="0" max="100" value="${l.value}" style="width:90px"><span>%</span>` : ""}</div>
+      <div class="row3" style="margin-top:8px"><button class="btn btn-moist es">저장</button><button class="btn btn-ghost ex" style="color:var(--red)">지우기</button><button class="btn btn-ghost ec">취소</button></div></div>`;
+    const dEl = b.previousElementSibling.previousElementSibling;   // the date cell of this row
+    dEl.before(box);
+    box.querySelector(".ec").onclick = () => box.remove();
+    box.querySelector(".ex").onclick = () => { if (confirm(`${l.date} 기록을 지울까요?`)) { db.log = db.log.filter(x => x !== l); save(); drawPlant(p); toast("지웠습니다"); } };
+    box.querySelector(".es").onclick = () => {
+      const nd = box.querySelector(".ed").value;
+      if (!nd || nd > today()) { toast("날짜를 확인해 주세요"); return; }
+      if (l.type === "moist") { const v = parseInt(box.querySelector(".ev").value, 10); if (!(v >= 0 && v <= 100)) { toast("0~100 사이 숫자"); return; } l.value = v; }
+      l.date = nd; save(); drawPlant(p); toast(`${md(nd)}로 고쳤습니다`);
+    };
   };
   $("delp").onclick = () => {
     if (confirm(`"${p.name}"을(를) 지울까요? 기록도 함께 지워집니다.`)) { db.plants = db.plants.filter(x => x !== p); db.log = db.log.filter(l => l.plant !== p.id); save(); closeSheet(); }
