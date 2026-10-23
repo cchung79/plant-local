@@ -106,16 +106,36 @@ async function claude(system, content, schema) {
   sdkPromise ??= import(SDK_URL);
   const { default: Anthropic } = await sdkPromise;
   const client = new Anthropic({ apiKey: k, dangerouslyAllowBrowser: true });   // the key is the owner's own, kept on this phone
-  const res = await client.beta.messages.create({
-    model: CLAUDE_MODEL, max_tokens: 16000,
-    betas: ["server-side-fallback-2026-07-01"], fallbacks: "default",
-    output_config: { effort: "medium", format: { type: "json_schema", schema } },
-    system, messages: [{ role: "user", content }],
-  });
+  const body = { model: CLAUDE_MODEL, max_tokens: 16000, system, messages: [{ role: "user", content }],
+                 output_config: { effort: "medium", ...(schema ? { format: { type: "json_schema", schema } } : {}) } };
+  let res;
+  try {
+    res = await client.beta.messages.create({ ...body, betas: ["server-side-fallback-2026-07-01"], fallbacks: "default" });
+  } catch (e) {
+    if (e.status === 400 && /fallback|beta/i.test(apiMessage(e))) {
+      try { res = await client.messages.create(body); } catch (e2) { throw new Error(claudeError(e2)); }
+    } else throw new Error(claudeError(e));
+  }
   if (res.stop_reason === "refusal") throw new Error("Claude가 이 요청에 답하지 않았습니다");
   if (res.stop_reason === "max_tokens") throw new Error("답이 너무 길어 잘렸습니다. 다시 시도해 주세요");
   const text = res.content.filter(b => b.type === "text").map(b => b.text).join("");
-  return JSON.parse(text);
+  return schema ? JSON.parse(text) : text;
+}
+function apiMessage(e) { return e?.error?.error?.message || e?.message || String(e); }
+function claudeError(e) {
+  const m = apiMessage(e);
+  if (e.status === 401) return "키가 맞지 않습니다. sk-ant-api03-로 시작하는 키 전체를 다시 붙여 넣어 주세요. (" + m + ")";
+  if (e.status === 400 && /credit balance/i.test(m)) return "Claude API 크레딧이 없습니다. platform.claude.com → Billing에서 충전해야 합니다. Claude 앱 구독(Pro 등)과는 별개입니다.";
+  if (e.status === 403) return "이 키로는 쓸 수 없습니다(권한). platform.claude.com에서 키의 워크스페이스·권한을 확인해 주세요. (" + m + ")";
+  if (e.status === 404) return "모델을 쓸 수 없는 계정입니다 (" + CLAUDE_MODEL + "). (" + m + ")";
+  if (e.status === 429) return "사용 한도에 걸렸습니다. 잠시 뒤 다시 시도하거나 platform.claude.com에서 한도를 확인해 주세요. (" + m + ")";
+  if (e.status >= 500) return "Claude 서버 문제입니다. 잠시 뒤 다시 시도해 주세요. (" + e.status + ")";
+  if (!e.status) return "인터넷 연결을 확인해 주세요. (" + m + ")";
+  return `오류 ${e.status}: ${m}`;
+}
+async function testClaude() {
+  const t = await claude("짧게 답합니다.", [{ type: "text", text: "연결 시험입니다. '연결됨'이라고만 답하세요." }], null);
+  return String(t).trim().slice(0, 40);
 }
 const CARE_SCHEMA = {
   type: "object", additionalProperties: false,
@@ -123,7 +143,7 @@ const CARE_SCHEMA = {
   properties: {
     korean_name: { type: "string" },
     water_warm_days: { type: "integer" }, water_cold_days: { type: "integer" },
-    fert_on: { type: "boolean" }, fert_warm_days: { type: ["integer", "null"] }, fert_cold_days: { type: ["integer", "null"] },
+    fert_on: { type: "boolean" }, fert_warm_days: { type: "integer", description: "0이면 비료 안 함" }, fert_cold_days: { type: "integer", description: "0이면 비료 안 함" },
     moisture_min_pct: { type: "integer" },
     light: { type: "string" }, location: { type: "string" }, location_reason: { type: "string" },
     notes: { type: "array", items: { type: "string" } },
@@ -139,7 +159,7 @@ const DIAG_SCHEMA = {
       properties: { cause: { type: "string" }, likelihood: { type: "string", enum: ["높음", "중간", "낮음"] }, why: { type: "string" } } } },
     checks: { type: "array", items: { type: "string" } },
     actions: { type: "array", items: { type: "string" } },
-    water_change_days: { type: ["integer", "null"] }, water_change_reason: { type: "string" },
+    water_change_days: { type: "integer", description: "0이면 바꾸지 않음" }, water_change_reason: { type: "string" },
   },
 };
 function myLocations() { return [...new Set(db.plants.map(p => p.location).filter(Boolean))]; }
@@ -191,8 +211,8 @@ function drawAdd(msg) {
       <div class="field"><label>물 · 따뜻한 계절</label><div class="unit"><input type="number" inputmode="numeric" id="ww" value="${p?.water_warm_days ?? 10}"><span>일</span></div></div>
       <div class="field"><label>물 · 추운 계절</label><div class="unit"><input type="number" inputmode="numeric" id="wc" value="${p?.water_cold_days ?? 14}"><span>일</span></div></div>
       <div class="toggle"><label for="fo">비료 일정 사용</label><input type="checkbox" id="fo" style="width:auto;transform:scale(1.4)" ${p?.fert_on ? "checked" : ""}></div>
-      <div class="field"><label>비료 · 따뜻한 계절<span class="hint">비우면 안 함</span></label><div class="unit"><input type="number" inputmode="numeric" id="fw" value="${p?.fert_warm_days ?? ""}"><span>일</span></div></div>
-      <div class="field"><label>비료 · 추운 계절<span class="hint">비우면 안 함</span></label><div class="unit"><input type="number" inputmode="numeric" id="fc" value="${p?.fert_cold_days ?? ""}"><span>일</span></div></div>
+      <div class="field"><label>비료 · 따뜻한 계절<span class="hint">비우면 안 함</span></label><div class="unit"><input type="number" inputmode="numeric" id="fw" value="${p?.fert_warm_days || ""}"><span>일</span></div></div>
+      <div class="field"><label>비료 · 추운 계절<span class="hint">비우면 안 함</span></label><div class="unit"><input type="number" inputmode="numeric" id="fc" value="${p?.fert_cold_days || ""}"><span>일</span></div></div>
       <div class="field"><label>물 줄 기준 수분</label><div class="unit"><input type="number" inputmode="numeric" id="mm" value="${p?.moisture_min_pct ?? 30}"><span>%</span></div></div>
       <div class="unit" style="margin-top:8px"><span>마지막 물 준 날</span><input type="date" id="lw" max="${today()}"></div>
       <button class="btn btn-ghost" id="ask" style="width:100%;margin-top:10px" ${a.species ? "" : "disabled"}>${k.claude ? "Claude에게 일정·위치 제안 받기" : "제안 받기 (Claude 키 필요)"}</button>
@@ -296,7 +316,7 @@ function bindDiag(p) {
         if (photo) content.unshift({ type: "image", source: { type: "base64", media_type: "image/jpeg", data: b64(photo) } });
         ans = await claude("당신은 한국 가정의 실내 식물 상태를 함께 살피는 도우미입니다. 사진과 기록(물 준 날, 수분계 값, 간격)을 근거로 " +
           "가능성 높은 원인부터 말하고, 집에서 확인할 것과 할 일을 구체적으로 씁니다. 사진만으로 확실하지 않으면 그렇다고 말합니다. " +
-          "물 간격을 바꾸는 게 맞다고 판단될 때만 water_change_days에 지금 계절의 새 간격(일)을 넣고, 아니면 null. 한국어로 짧게.", content, DIAG_SCHEMA);
+          "물 간격을 바꾸는 게 맞다고 판단될 때만 water_change_days에 지금 계절의 새 간격(일)을 넣고, 아니면 0. 한국어로 짧게.", content, DIAG_SCHEMA);
         html += `<div class="card suggest" style="margin:10px 0 0"><p><b>${esc(ans.summary)}</b> <span class="badge ${ans.urgency === "바로" ? "b-late" : "b-moist"}">${esc(ans.urgency)}</span></p>
           ${ans.causes.length ? `<div class="small"><b>원인 후보</b><ul style="padding-left:18px;margin:4px 0">${ans.causes.map(c => `<li>${esc(c.cause)} (${esc(c.likelihood)}) — ${esc(c.why)}</li>`).join("")}</ul></div>` : ""}
           ${ans.checks.length ? `<div class="small"><b>확인할 것</b><ul style="padding-left:18px;margin:4px 0">${ans.checks.map(c => `<li>${esc(c)}</li>`).join("")}</ul></div>` : ""}
@@ -318,16 +338,31 @@ function bindDiag(p) {
 function keysSettingsHtml() {
   const k = keys();
   const row = (id, label, hint, url) => `<div style="padding:6px 0;border-bottom:1px solid var(--line)"><label class="small"><b>${label}</b> — ${hint} <a href="${url}" target="_blank" rel="noopener">키 받기</a></label>
-    <input type="password" autocomplete="off" data-key="${id}" value="${esc(k[id] || "")}" placeholder="${k[id] ? "" : "비어 있음"}" style="margin-top:4px"></div>`;
+    <input type="password" autocomplete="off" data-key="${id}" value="${esc(k[id] || "")}" placeholder="${k[id] ? "" : "비어 있음"}" style="margin-top:4px">
+    ${k[id] ? `<span class="small">저장됨: ${esc(k[id].slice(0, 12))}… (${k[id].length}자)</span>` : ""}</div>`;
   return `<h2>온라인 기능 (선택)</h2>
   <div class="card">
     <p class="small" style="margin-top:0">버튼을 누를 때만 인터넷을 씁니다. 키는 이 폰에만 저장되고 백업 파일에는 들어가지 않습니다. 사진과 식물 기록은 그 버튼의 서비스로만 보내집니다.</p>
     ${row("plantnet", "Pl@ntNet", "사진으로 식물 찾기, 하루 500회 무료. 키 설정에서 이 사이트 주소를 허용해야 합니다.", "https://my.plantnet.org/")}
     ${row("perenual", "Perenual", "물·햇빛 참고값 (무료 키, 일부 식물은 유료)", "https://perenual.com/docs/api")}
     ${row("kindwise", "Kindwise plant.health", "사진으로 병해 찾기, 처음 100크레딧 무료", "https://admin.kindwise.com/signup")}
-    ${row("claude", "Claude (Anthropic)", "새 식물 일정 제안, 상태 묻기. 사용한 만큼 요금", "https://console.anthropic.com/")}
+    ${row("claude", "Claude (Anthropic)", "새 식물 일정 제안, 상태 묻기. platform.claude.com → API Keys에서 만든 sk-ant-api03-… 키. 사용한 만큼 요금(크레딧 충전 필요)", "https://platform.claude.com/settings/keys")}
+    <div class="toggle" style="padding-top:8px"><span class="small" id="cres">키를 넣고 연결을 확인해 보세요.</span><button class="btn btn-ghost" id="ctest" style="white-space:nowrap">연결 확인</button></div>
   </div>`;
 }
 function bindKeys() {
-  for (const inp of document.querySelectorAll("[data-key]")) inp.onchange = () => { setKey(inp.dataset.key, inp.value.trim()); toast(inp.value.trim() ? "키를 저장했습니다" : "키를 지웠습니다"); };
+  for (const inp of document.querySelectorAll("[data-key]")) {
+    inp.oninput = () => setKey(inp.dataset.key, inp.value.trim());
+    inp.onchange = () => { setKey(inp.dataset.key, inp.value.trim()); toast(inp.value.trim() ? "키를 저장했습니다" : "키를 지웠습니다"); };
+  }
+  const btn = document.getElementById("ctest"), out = document.getElementById("cres");
+  if (btn) btn.onclick = async () => {
+    const k = (keys().claude || "").trim();
+    if (!k) { out.textContent = "키 칸이 비어 있습니다."; return; }
+    if (!k.startsWith("sk-ant-")) { out.textContent = `넣은 값이 API 키 모양이 아닙니다(앞부분 "${k.slice(0, 8)}…"). sk-ant-api03-로 시작해야 합니다.`; return; }
+    btn.disabled = true; out.textContent = "확인 중…";
+    try { const r = await testClaude(); out.innerHTML = `<b style="color:var(--green)">연결됨</b> — Claude 답: ${esc(r)}`; }
+    catch (e) { out.innerHTML = `<b style="color:var(--red)">안 됨</b> — ${esc(e.message)}`; }
+    btn.disabled = false;
+  };
 }
