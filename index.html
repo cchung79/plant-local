@@ -79,6 +79,7 @@ body.locked { overflow: hidden; }
 .toast { position: fixed; left: 50%; bottom: calc(84px + env(safe-area-inset-bottom)); transform: translateX(-50%); background: var(--ink); color: var(--bg);
          padding: 10px 16px; border-radius: 999px; font-size: 14px; z-index: 20; display: none; }
 .small { color: var(--sub); font-size: 13px; }
+a { color: var(--green); }
 </style>
 </head>
 <body>
@@ -521,7 +522,7 @@ setTimeout(() => syncSensors().then(c => { if (c && !sheet && (tab === "todo" ||
 const removed = dedupe(); if (removed) setTimeout(() => toast(`같은 날 중복 기록 ${removed}건을 정리했습니다`), 300);
 save(); render();
 // ---- updates: check on every open/return; when a new version takes over, reload once (not while a plant is open) ----
-const APP_VERSION = "15";
+const APP_VERSION = "16";
 let pendingReload = false;
 if ("serviceWorker" in navigator && (location.protocol === "https:" || ["localhost", "127.0.0.1"].includes(location.hostname))) {
   const hadController = !!navigator.serviceWorker.controller;
