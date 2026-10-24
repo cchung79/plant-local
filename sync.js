@@ -15,11 +15,13 @@ function records() {
   for (const l of db.log) out["log/" + l.id] = l;
   for (const e of db.pending || []) out["pending/" + e.id] = e;
   for (const [t, th] of Object.entries(db.chats || {})) out["chat/" + t] = { target: t, thread: th };
+  for (const t of db.trash || []) out["trash/" + t.id] = t;
   out["meta/seasons"] = db.seasons;
   return out;
 }
 function applyRows(rows) {
-  const by = { plant: new Map(db.plants.map(p => [p.id, p])), log: new Map(db.log.map(l => [l.id, l])), pending: new Map((db.pending || []).map(e => [e.id, e])) };
+  const by = { plant: new Map(db.plants.map(p => [p.id, p])), log: new Map(db.log.map(l => [l.id, l])), pending: new Map((db.pending || []).map(e => [e.id, e])),
+              trash: new Map((db.trash || []).map(t => [t.id, t])) };
   db.chats ??= {};
   for (const r of rows) {
     if (r.kind === "meta") {
@@ -31,7 +33,7 @@ function applyRows(rows) {
     const m = by[r.kind]; if (!m) continue;
     if (r.deleted) m.delete(r.id); else m.set(r.id, r.data);
   }
-  db.plants = [...by.plant.values()]; db.log = [...by.log.values()]; db.pending = [...by.pending.values()];
+  db.plants = [...by.plant.values()]; db.log = [...by.log.values()]; db.pending = [...by.pending.values()]; db.trash = [...by.trash.values()];
 }
 
 let syncTimer = null, syncing_ = null, syncAgain = false, lastSyncAt = 0, lastSyncError = "";
@@ -62,7 +64,7 @@ async function syncNow(opts = {}) {
         for (const k of Object.keys(sh.recs || {})) if (!(k in cur)) { const [kind, ...id] = k.split("/"); changes.push({ kind, id: id.join("/"), deleted: true, updated: now }); }
       }
       const res = await serverCall("/api/sync", { since: opts.replace ? 0 : (sh.since || 0), changes });
-      if (opts.replace) { db.plants = []; db.log = []; db.pending = []; db.chats = {}; }
+      if (opts.replace) { db.plants = []; db.log = []; db.pending = []; db.chats = {}; db.trash = []; }
       applyRows(res.rows);
       dedupe();
       try { localStorage.setItem(KEY, JSON.stringify(db)); } catch (e) {}

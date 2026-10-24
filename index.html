@@ -77,6 +77,7 @@ body.locked { overflow: hidden; }
 .log .d { color: var(--sub); }
 .log button { border: 0; background: none; color: var(--sub); font-size: 13px; }
 .toggle { display: flex; align-items: center; justify-content: space-between; padding: 6px 0; }
+.toastbtn { margin-left: 10px; border: 0; border-radius: 999px; padding: 4px 10px; font: inherit; font-weight: 700; background: var(--green); color: #fff; }
 .toast { position: fixed; left: 50%; bottom: calc(84px + env(safe-area-inset-bottom)); transform: translateX(-50%); background: var(--ink); color: var(--bg);
          padding: 10px 16px; border-radius: 999px; font-size: 14px; z-index: 20; display: none; }
 .small { color: var(--sub); font-size: 13px; }
@@ -94,9 +95,9 @@ a { color: var(--green); }
 </nav>
 <div class="toast" id="toast"></div>
 
-<script src="online.js?v=22"></script>
-<script src="sensor.js?v=22"></script>
-<script src="sync.js?v=22"></script>
+<script src="online.js?v=23"></script>
+<script src="sensor.js?v=23"></script>
+<script src="sync.js?v=23"></script>
 <script id="seed" type="application/json">{"version": 1, "source": "", "seasons": {"warm": [3, 10], "cold": [11, 2]}, "plants": []}</script>
 <script>
 "use strict";
@@ -250,6 +251,14 @@ function menuRow(id, title, sub) {
 function renderSettings() {
   if (settingsSub === "eco") return subPage("Ecowitt 센서", `<div class="card">${ecoSettingsHtml()}</div>`);
   if (settingsSub === "online") return subPage("온라인 기능", keysSettingsHtml());
+  if (settingsSub === "trash") {
+    const list = [...(db.trash || [])].sort((a, b) => b.at - a.at);
+    const nameOf = id => db.plants.find(p => p.id === id)?.name || "(지운 식물)";
+    subPage("최근 지운 기록", list.length ? `<div class="card log">${list.map(t => `<span class="d">${t.what === "plant" ? "식물" : esc(t.data.date)}</span><span>${t.what === "plant" ? `<b>${esc(t.data.name)}</b> 기록 ${(t.logs || []).length}건과 함께` : `${esc(nameOf(t.data.plant))} · ${TYPE_KO[t.data.type] || ""}${t.data.value != null ? " " + t.data.value + "%" : ""}`} <span class="small">${agoText(Date.now() - t.at)} 지움</span></span><button data-rs="${t.id}">되살리기</button><span></span>`).join("")}</div>
+      <p class="small">지운 지 ${TRASH_DAYS}일이 지나면 완전히 없어집니다.</p>` : `<div class="empty">최근 ${TRASH_DAYS}일 동안 지운 기록이 없습니다</div>`);
+    for (const b of document.querySelectorAll("[data-rs]")) b.onclick = () => { restore(b.dataset.rs); settingsSub = "trash"; renderSettings(); };
+    return;
+  }
   if (settingsSub === "server") { subPage("서버 연결", serverSettingsHtml()); bindServerSettings(); return; }
   const k = keys(), linked = db.plants.filter(p => p.sensorCh).length;
   const onl = [k.plantnet && "사진 식별", k.claude && "Claude", k.kindwise && "병해 진단", k.perenual && "Perenual"].filter(Boolean);
@@ -257,6 +266,7 @@ function renderSettings() {
   <h2>연결</h2>
   ${menuRow("go-eco", "Ecowitt 센서", k.ecowitt_mac ? `${esc(k.ecowitt_name || "게이트웨이")} · 센서 ${linked}개 화분에 연결` : "토양 수분 센서 연결하기")}
   ${menuRow("go-server", "서버 연결", serverOn() ? `연결됨 · 아이폰·노트10 같은 기록, 센서는 서버가 15분마다` : "두 폰을 같은 기록으로 맞추기")}
+  ${menuRow("go-trash", "최근 지운 기록", (db.trash || []).length ? `${db.trash.length}건 · ${TRASH_DAYS}일 안에 되살릴 수 있음` : `지운 기록을 ${TRASH_DAYS}일 동안 보관합니다`)}
   ${menuRow("go-online", "온라인 기능", onl.length ? `켜짐: ${onl.join(", ")}` : "사진으로 식물 찾기 · Claude 키 넣기")}
   <h2>계절</h2>
   <div class="card">
@@ -287,6 +297,7 @@ function renderSettings() {
   document.getElementById("go-eco").onclick = () => { settingsSub = "eco"; renderSettings(); };
   document.getElementById("go-online").onclick = () => { settingsSub = "online"; renderSettings(); };
   document.getElementById("go-server").onclick = () => { settingsSub = "server"; renderSettings(); };
+  document.getElementById("go-trash").onclick = () => { settingsSub = "trash"; renderSettings(); };
   document.getElementById("ws").onchange = setSeason; document.getElementById("we").onchange = setSeason;
   document.getElementById("exp").onclick = () => {
     const blob = new Blob([JSON.stringify(db, null, 1)], { type: "application/json" });
@@ -395,7 +406,7 @@ function drawPlant(p, isNew) {
     db.log.push({ id: uid(), plant: p.id, type, date: d(), ...extra }); save();
     if (newer) setTimeout(() => showSuggest(p, {
       text: `${md(d())} ${type === "water" ? "물" : "비료"} 기록을 넣었지만, 더 최근인 <b>${md(newer.date)}</b> 기록이 있어서 다음 날짜는 ${md(newer.date)} 기준으로 계산됩니다. ${md(newer.date)} 기록이 잘못 들어간 것이면 지우세요.`,
-      actions: [{ t: `${md(newer.date)} 기록 지우기`, f: () => { db.log = db.log.filter(x => x !== newer); save(); drawPlant(p); toast(`${md(newer.date)} 기록을 지웠습니다`); } }],
+      actions: [{ t: `${md(newer.date)} 기록 지우기`, f: () => removeLog(newer, p) }],
     }), 0);
   };
   $("wbtn").onclick = () => { pick(); const sg = afterWater(p, d()); add("water"); drawPlant(p); toast(`${md(d())} 물 준 날을 기록했습니다`); if (sg) showSuggest(p, sg); };
@@ -421,8 +432,7 @@ function drawPlant(p, isNew) {
       return;
     }
     const l = db.log.find(x => x.id === b.dataset.del); if (!l) return;
-    db.log = db.log.filter(x => x !== l); save(); drawPlant(p);
-    toast(`${md(l.date)} ${({ water: "물", fert: "비료", moist: "수분", snooze: "미룸", edit: "변경", diag: "상태 묻기" })[l.type]} 기록을 삭제했습니다`);
+    removeLog(l, p);
   };
   for (const b of sheet.querySelectorAll("[data-edit]")) b.onclick = () => {
     const l = db.log.find(x => x.id === b.dataset.edit); if (!l) return;
@@ -433,7 +443,7 @@ function drawPlant(p, isNew) {
     const dEl = b.previousElementSibling.previousElementSibling;   // the date cell of this row (date, text, 수정, 삭제)
     dEl.before(box);
     box.querySelector(".ec").onclick = () => box.remove();
-    box.querySelector(".ex").onclick = () => { if (confirm(`${l.date} 기록을 지울까요?`)) { db.log = db.log.filter(x => x !== l); save(); drawPlant(p); toast("지웠습니다"); } };
+    box.querySelector(".ex").onclick = () => { if (confirm(`${l.date} 기록을 지울까요?`)) removeLog(l, p); };
     box.querySelector(".es").onclick = () => {
       const nd = box.querySelector(".ed").value;
       if (!nd || nd > today()) { toast("날짜를 확인해 주세요"); return; }
@@ -442,7 +452,10 @@ function drawPlant(p, isNew) {
     };
   };
   $("delp").onclick = () => {
-    if (confirm(`"${p.name}"을(를) 지울까요? 기록도 함께 지워집니다.`)) { db.plants = db.plants.filter(x => x !== p); db.log = db.log.filter(l => l.plant !== p.id); save(); closeSheet(); }
+    if (confirm(`"${p.name}"을(를) 지울까요? 기록도 함께 지워지고, 30일 동안 설정 → 최근 지운 기록에서 되살릴 수 있습니다.`)) {
+      trashIt("plant", p, { logs: db.log.filter(l => l.plant === p.id) });
+      db.plants = db.plants.filter(x => x !== p); db.log = db.log.filter(l => l.plant !== p.id); save(); closeSheet();
+    }
   };
   bindDiag(p); bindSensor(p);
   $("toask").onclick = () => { db.chatTarget = p.id; save(); tab = "ask"; sheet?.remove(); sheet = null; document.body.classList.remove("locked"); render(); window.scrollTo(0, 0); };
@@ -507,7 +520,30 @@ function showSuggest(p, sg) {
 
 // ---- shell ----
 let toastT;
-function toast(t) { const e = document.getElementById("toast"); e.textContent = t; e.style.display = "block"; clearTimeout(toastT); toastT = setTimeout(() => e.style.display = "none", 2200); }
+function toast(t, action) {
+  const e = document.getElementById("toast"); e.textContent = t; e.style.display = "block";
+  if (action) { const b = document.createElement("button"); b.textContent = action.label; b.className = "toastbtn"; b.onclick = () => { e.style.display = "none"; action.run(); }; e.appendChild(b); }
+  clearTimeout(toastT); toastT = setTimeout(() => e.style.display = "none", action ? 6000 : 2200);
+}
+const TRASH_DAYS = 30, TYPE_KO = ({ water: "물", fert: "비료", moist: "수분", snooze: "미룸", edit: "변경", diag: "상태 묻기" });
+function trashIt(what, data, extra = {}) { (db.trash ??= []).push({ id: uid(), what, data, at: Date.now(), ...extra }); }
+function removeLog(l, p) {                    // p: the plant whose page is open (redrawn), or null
+  db.log = db.log.filter(x => x !== l); trashIt("log", l); const t = db.trash.at(-1); save();
+  if (p) drawPlant(p); else render();
+  toast(`${md(l.date)} ${TYPE_KO[l.type] || ""} 기록을 지웠습니다`, { label: "되돌리기", run: () => restore(t.id) });
+}
+function restore(id) {
+  const t = (db.trash || []).find(x => x.id === id); if (!t) return;
+  if (t.what === "log" && !db.log.some(l => l.id === t.data.id)) db.log.push(t.data);
+  if (t.what === "plant") {
+    if (!db.plants.some(p => p.id === t.data.id)) db.plants.push(t.data);
+    for (const l of t.logs || []) if (!db.log.some(x => x.id === l.id)) db.log.push(l);
+  }
+  db.trash = db.trash.filter(x => x !== t); save();
+  if (sheet && t.what === "log") { const p = db.plants.find(x => x.id === t.data.plant); if (p) drawPlant(p); } else render();
+  toast("되살렸습니다");
+}
+function pruneTrash() { const cut = Date.now() - TRASH_DAYS * 86400000; if (db.trash) db.trash = db.trash.filter(t => t.at > cut); }
 function header() { document.getElementById("today").textContent = `${today()} · ${SEASON_KO[season(today())]} · 식물 ${db.plants.length}그루`; }
 function render() {
   header();
@@ -549,10 +585,11 @@ if (location.hash.startsWith("#connect=")) {
   const code = location.hash.slice(9); history.replaceState(null, "", location.pathname);
   setTimeout(() => connectWith(code, "merge").then(() => { toast("서버에 연결했습니다"); render(); }).catch(e => toast(e.message)), 200);
 } else setTimeout(() => syncNow().catch(() => {}), 200);
+pruneTrash();
 const removed = dedupe(); if (removed) setTimeout(() => toast(`같은 날 중복 기록 ${removed}건을 정리했습니다`), 300);
 save(); render();
 // ---- updates: check on every open/return; when a new version takes over, reload once (not while a plant is open) ----
-const APP_VERSION = "22";
+const APP_VERSION = "23";
 let pendingReload = false;
 if ("serviceWorker" in navigator && (location.protocol === "https:" || ["localhost", "127.0.0.1"].includes(location.hostname))) {
   const hadController = !!navigator.serviceWorker.controller;
