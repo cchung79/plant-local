@@ -94,9 +94,9 @@ a { color: var(--green); }
 </nav>
 <div class="toast" id="toast"></div>
 
-<script src="online.js?v=21"></script>
-<script src="sensor.js?v=21"></script>
-<script src="sync.js?v=21"></script>
+<script src="online.js?v=22"></script>
+<script src="sensor.js?v=22"></script>
+<script src="sync.js?v=22"></script>
 <script id="seed" type="application/json">{"version": 1, "source": "", "seasons": {"warm": [3, 10], "cold": [11, 2]}, "plants": []}</script>
 <script>
 "use strict";
@@ -209,19 +209,26 @@ function renderTodo() {
     view.innerHTML = `<div class="card" style="margin-top:12px"><b>식물이 아직 없습니다</b><p class="small">처음 데이터 파일(식물_시작데이터_*.json)을 이 폰에 받은 뒤, <b>설정 → 가져오기</b>로 넣으세요. 식물을 하나씩 직접 추가해도 됩니다(식물 탭).</p></div>`;
     return;
   }
-  const soon = [], later = [], unknown = [];
+  // 오늘 할 일 = due today, overdue, or dry soil; 다음 일정 = from tomorrow on, one heading per day
+  const now = [], next = new Map(), unknown = [];
   for (const p of db.plants) {
     const ds = ["water", "fert"].map(k => due(p, k)).filter(d => !d.none);
     if (ds.some(d => d.unknown)) unknown.push(p);
     const dry = lastMoist(p) && lastMoist(p).value <= p.moistureMin;
     const min = dry ? 0 : Math.min(...ds.filter(d => !d.unknown).map(d => d.days));
-    if (min <= 2) soon.push([min, p]); else if (isFinite(min)) later.push([min, p]);
+    if (min <= 0) now.push([min, p]);
+    else if (isFinite(min)) { const day = addDays(today(), min); if (!next.has(day)) next.set(day, []); next.get(day).push(p); }
   }
-  soon.sort((a, b) => a[0] - b[0]); later.sort((a, b) => a[0] - b[0]);
+  now.sort((a, b) => a[0] - b[0]);
+  const WD = ["일", "월", "화", "수", "목", "금", "토"], wd = s => WD[parse(s).getDay()];
+  const dayHead = d => { const n = diff(today(), d); return `${n === 1 ? "내일" : n + "일 뒤"} · ${md(d)} (${wd(d)})`; };
   view.innerHTML =
-    sensorTopHtml() + `<h2>오늘·곧 (2일 안)</h2>${soon.length ? soon.map(x => plantRow(x[1])).join("") : `<div class="empty">당장 할 일이 없습니다</div>`}` +
+    sensorTopHtml() +
+    `<h2 style="font-size:17px;color:var(--ink)">오늘 할 일 · ${md(today())} (${wd(today())})${now.length ? ` · ${now.length}그루` : ""}</h2>` +
+    (now.length ? now.map(x => plantRow(x[1])).join("") : `<div class="empty">오늘은 할 일이 없습니다</div>`) +
     (unknown.length ? `<h2>마지막 기록이 없음 — 물 준 날을 넣어 주세요</h2>${unknown.map(plantRow).join("")}` : "") +
-    `<h2>그다음</h2>${later.map(x => plantRow(x[1])).join("")}`;
+    `<h2 style="font-size:17px;color:var(--ink);margin-top:28px">다음 일정</h2>` +
+    [...next.keys()].sort().map(d => `<h2>${dayHead(d)}</h2>${next.get(d).map(plantRow).join("")}`).join("");
   bindSensorTop();
 }
 function renderPlants() {
@@ -545,7 +552,7 @@ if (location.hash.startsWith("#connect=")) {
 const removed = dedupe(); if (removed) setTimeout(() => toast(`같은 날 중복 기록 ${removed}건을 정리했습니다`), 300);
 save(); render();
 // ---- updates: check on every open/return; when a new version takes over, reload once (not while a plant is open) ----
-const APP_VERSION = "21";
+const APP_VERSION = "22";
 let pendingReload = false;
 if ("serviceWorker" in navigator && (location.protocol === "https:" || ["localhost", "127.0.0.1"].includes(location.hostname))) {
   const hadController = !!navigator.serviceWorker.controller;
