@@ -93,9 +93,9 @@ a { color: var(--green); }
 </nav>
 <div class="toast" id="toast"></div>
 
-<script src="online.js"></script>
-<script src="sensor.js"></script>
-<script src="sync.js"></script>
+<script src="online.js?v=20"></script>
+<script src="sensor.js?v=20"></script>
+<script src="sync.js?v=20"></script>
 <script id="seed" type="application/json">{"version": 1, "source": "", "seasons": {"warm": [3, 10], "cold": [11, 2]}, "plants": []}</script>
 <script>
 "use strict";
@@ -544,7 +544,7 @@ if (location.hash.startsWith("#connect=")) {
 const removed = dedupe(); if (removed) setTimeout(() => toast(`같은 날 중복 기록 ${removed}건을 정리했습니다`), 300);
 save(); render();
 // ---- updates: check on every open/return; when a new version takes over, reload once (not while a plant is open) ----
-const APP_VERSION = "19";
+const APP_VERSION = "20";
 let pendingReload = false;
 if ("serviceWorker" in navigator && (location.protocol === "https:" || ["localhost", "127.0.0.1"].includes(location.hostname))) {
   const hadController = !!navigator.serviceWorker.controller;
