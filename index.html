@@ -35,8 +35,9 @@ nav button { flex: 1; border: 0; background: none; color: var(--sub); font: inhe
 nav button.on { color: var(--green); font-weight: 700; }
 h2 { font-size: 15px; color: var(--sub); margin: 18px 0 8px; font-weight: 600; }
 .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 12px 14px; margin-bottom: 10px; }
-.plant { display: flex; align-items: center; gap: 10px; cursor: pointer; }
-.plant .main { flex: 1; min-width: 0; }
+/* the name keeps at least about half the row; when the badges do not fit beside it they move to a line below */
+.plant { display: flex; align-items: center; gap: 8px 10px; cursor: pointer; flex-wrap: wrap; }
+.plant .main { flex: 1 1 150px; min-width: 150px; }
 .plant .name { font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .plant .loc { color: var(--sub); font-size: 13px; }
 .badges { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
@@ -93,9 +94,9 @@ a { color: var(--green); }
 </nav>
 <div class="toast" id="toast"></div>
 
-<script src="online.js?v=20"></script>
-<script src="sensor.js?v=20"></script>
-<script src="sync.js?v=20"></script>
+<script src="online.js?v=21"></script>
+<script src="sensor.js?v=21"></script>
+<script src="sync.js?v=21"></script>
 <script id="seed" type="application/json">{"version": 1, "source": "", "seasons": {"warm": [3, 10], "cold": [11, 2]}, "plants": []}</script>
 <script>
 "use strict";
@@ -544,7 +545,7 @@ if (location.hash.startsWith("#connect=")) {
 const removed = dedupe(); if (removed) setTimeout(() => toast(`같은 날 중복 기록 ${removed}건을 정리했습니다`), 300);
 save(); render();
 // ---- updates: check on every open/return; when a new version takes over, reload once (not while a plant is open) ----
-const APP_VERSION = "20";
+const APP_VERSION = "21";
 let pendingReload = false;
 if ("serviceWorker" in navigator && (location.protocol === "https:" || ["localhost", "127.0.0.1"].includes(location.hostname))) {
   const hadController = !!navigator.serviceWorker.controller;
