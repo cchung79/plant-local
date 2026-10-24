@@ -93,6 +93,8 @@ function sensorTopHtml() {
   const c = sensorCache(), pend = (db.pending || []).filter(e => db.plants.some(p => p.id === e.plant));
   const linked = db.plants.filter(p => p.sensorCh).length;
   return pend.map(e => { const p = db.plants.find(x => x.id === e.plant);
+      if (e.alert) return `<div class="card suggest" style="border-left-color:var(--red)"><p><b>${esc(p.name)}</b> · 센서 경고</p><p class="small" style="margin-top:-4px">${esc(e.text)}</p>
+        <div class="row2"><button class="btn btn-ghost" data-open="${p.id}">식물 보기</button><button class="btn btn-ghost" data-pn="${e.id}">확인했어요</button></div></div>`;
       return `<div class="card suggest"><p><b>${esc(p.name)}</b> 흙 수분이 ${e.from}% → ${e.to}%로 올랐습니다 (${md(e.date)}). 물 주셨나요?</p>
         <div class="row2"><button class="btn btn-water" data-pw="${e.id}">${md(e.date)} 물 준 날로 기록</button><button class="btn btn-ghost" data-pn="${e.id}">아니요</button></div></div>`; }).join("") +
     `<div class="small" style="display:flex;justify-content:space-between;align-items:center;margin:4px 2px 0">
@@ -119,10 +121,37 @@ function sensorFieldHtml(p) {
   return `<div class="field"><label>토양 센서<span class="hint">Ecowitt 채널</span></label><select id="sch"><option value="">없음</option>${opts}</select></div>`;
 }
 function sensorGraphHtml(p) {
-  if (!ecoReady() || !p.sensorCh) return "";
+  if (!p.sensorCh || !(ecoReady() || (typeof serverOn === "function" && serverOn()))) return "";
   const n = sensorNow(p);
   return `<h2>센서 수분 (CH${p.sensorCh})</h2><div class="card"><div class="small">${n ? `지금 <b>${n.pct}%</b> · ${agoText(Date.now() - n.t * 1000)} · 기준 ${p.moistureMin}%` : "아직 값이 없습니다"}</div>
-    <div id="sgraph" class="small" style="margin-top:8px">7일 기록을 불러오는 중…</div></div>`;
+    <div id="sgraph" class="small" style="margin-top:8px">14일 기록을 불러오는 중…</div></div>`;
+}
+// local copy of the server's daily-change rule, for phones that read Ecowitt directly
+function dailyChangeLocal(pts) {
+  const by = new Map();
+  for (const [t, v] of pts) { const d = new Date((t + 9 * 3600) * 1000).toISOString().slice(0, 10); if (!by.has(d)) by.set(d, []); by.get(d).push(v); }
+  return [...by].sort().map(([day, vs]) => { let w = false; for (let i = 1; i < vs.length; i++) if (vs[i] - vs[i - 1] >= 10) w = true;
+    return { day, drop: +(vs[0] - vs.at(-1)).toFixed(1), watered: w, n: vs.length }; });
+}
+async function sensorHistory(ch) {
+  if (typeof serverOn === "function" && serverOn()) return serverCall(`/api/history?ch=${ch}&days=14`);
+  const pts = await ecoHistory(ch, 14), days = dailyChangeLocal(pts);
+  const usual = days.slice(0, -1).filter(d => !d.watered && d.n >= 30).map(d => d.drop).sort((a, b) => a - b);
+  return { points: pts, days, usualDrop: usual.length ? usual[Math.floor(usual.length / 2)] : null, alerts: [] };
+}
+function dailyBars(days) {
+  const W = 320, H = 90, pad = 18, list = days.slice(-14), n = list.length || 1, bw = (W - 2 * pad) / n;
+  const mx = Math.max(3, ...list.map(d => Math.abs(d.drop)));
+  const y0 = H / 2;
+  return `<svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="하루 동안 마른 양">
+    <line x1="${pad}" x2="${W - pad}" y1="${y0}" y2="${y0}" stroke="var(--line)"/>
+    ${list.map((d, i) => { const h = (H / 2 - 12) * Math.abs(d.drop) / mx, x = pad + i * bw + 2;
+      const col = d.watered ? "var(--blue)" : "var(--brown)";
+      return d.drop >= 0 ? `<rect x="${x.toFixed(1)}" y="${(y0 - h).toFixed(1)}" width="${(bw - 4).toFixed(1)}" height="${h.toFixed(1)}" fill="${col}"/>`
+                          : `<rect x="${x.toFixed(1)}" y="${y0}" width="${(bw - 4).toFixed(1)}" height="${h.toFixed(1)}" fill="var(--blue)"/>`; }).join("")}
+    ${list.filter((d, i) => i % 3 === 0 || i === n - 1).map(d => { const i = list.indexOf(d);
+      return `<text x="${(pad + i * bw + bw / 2).toFixed(1)}" y="${H - 2}" font-size="9" fill="var(--sub)" text-anchor="middle">${Number(d.day.slice(5, 7))}/${Number(d.day.slice(8))}</text>`; }).join("")}
+  </svg>`;
 }
 function bindSensor(p) {
   const sel = document.querySelector(".sheet #sch");
@@ -132,7 +161,13 @@ function bindSensor(p) {
     save(); try { await syncSensors(true); } catch (e) { toast(e.message); } drawPlant(p);
   };
   const g = document.querySelector(".sheet #sgraph");
-  if (g) ecoHistory(p.sensorCh).then(pts => { if (g.isConnected) g.innerHTML = pts.length ? sparkline(pts, p.moistureMin) : "지난 7일 기록이 없습니다"; })
+  if (g) sensorHistory(p.sensorCh).then(h => {
+    if (!g.isConnected) return;
+    if (!h.points.length) { g.textContent = "지난 14일 기록이 없습니다"; return; }
+    g.innerHTML = sparkline(h.points, p.moistureMin) +
+      `<div class="small" style="margin-top:10px"><b>하루 동안 마른 양</b> · 갈색 = 마름, 파랑 = 물 준 날${h.usualDrop != null ? ` · 평소 하루 <b>${h.usualDrop}%</b>` : ""}</div>` + dailyBars(h.days) +
+      (h.alerts.length ? h.alerts.map(a => `<p class="small" style="color:var(--red);margin:6px 0 0">⚠ ${esc(a.text)}</p>`).join("") : `<p class="small" style="margin:6px 0 0">평소와 다른 변화는 없습니다.</p>`);
+  })
     .catch(e => { if (g.isConnected) g.textContent = "기록을 못 불러왔습니다: " + e.message; });
 }
 function sparkline(pts, min) {

@@ -95,9 +95,9 @@ a { color: var(--green); }
 </nav>
 <div class="toast" id="toast"></div>
 
-<script src="online.js?v=23"></script>
-<script src="sensor.js?v=23"></script>
-<script src="sync.js?v=23"></script>
+<script src="online.js?v=24"></script>
+<script src="sensor.js?v=24"></script>
+<script src="sync.js?v=24"></script>
 <script id="seed" type="application/json">{"version": 1, "source": "", "seasons": {"warm": [3, 10], "cold": [11, 2]}, "plants": []}</script>
 <script>
 "use strict";
@@ -337,7 +337,7 @@ function drawPlant(p, isNew) {
   const lw = last(p.id, "water"), lf = last(p.id, "fert");
   const logs = logsOf(p.id).slice(0, 30);
   const baseW = last(p.id, "water")?.id, baseF = last(p.id, "fert")?.id;
-  const TYPE = { water: "물", fert: "비료", moist: "수분", snooze: "미룸", edit: "간격 변경", diag: "상태 묻기" };
+  const TYPE = { water: "물", fert: "비료", moist: "수분", snooze: "미룸", edit: "간격 변경", diag: "상태 묻기", report: "전문 진단" };
   sheet.innerHTML = `
   <header><button id="back">‹ 목록</button><h1 style="flex:1;font-size:18px;margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(p.name)}</h1></header>
   <main>
@@ -357,6 +357,7 @@ function drawPlant(p, isNew) {
       <div class="row3"><button class="btn btn-water" id="wbtn">물 줌</button><button class="btn btn-fert" id="fbtn">비료 줌</button><button class="btn btn-ghost" id="bbtn">물+비료</button></div>
     </div>
     <div id="sg"></div>
+    ${expertCardHtml(p)}
     ${diagCardHtml(p)}
     <button class="btn btn-ghost" id="toask" style="width:100%;margin-top:8px">이 식물에 대해 Claude와 대화하기 →</button>
 
@@ -457,7 +458,7 @@ function drawPlant(p, isNew) {
       db.plants = db.plants.filter(x => x !== p); db.log = db.log.filter(l => l.plant !== p.id); save(); closeSheet();
     }
   };
-  bindDiag(p); bindSensor(p);
+  bindDiag(p); bindSensor(p); bindExpert(p);
   $("toask").onclick = () => { db.chatTarget = p.id; save(); tab = "ask"; sheet?.remove(); sheet = null; document.body.classList.remove("locked"); render(); window.scrollTo(0, 0); };
   if (isNew) sheet.querySelector('[data-t="name"]').focus();
 }
@@ -589,7 +590,7 @@ pruneTrash();
 const removed = dedupe(); if (removed) setTimeout(() => toast(`같은 날 중복 기록 ${removed}건을 정리했습니다`), 300);
 save(); render();
 // ---- updates: check on every open/return; when a new version takes over, reload once (not while a plant is open) ----
-const APP_VERSION = "23";
+const APP_VERSION = "24";
 let pendingReload = false;
 if ("serviceWorker" in navigator && (location.protocol === "https:" || ["localhost", "127.0.0.1"].includes(location.hostname))) {
   const hadController = !!navigator.serviceWorker.controller;

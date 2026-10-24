@@ -101,7 +101,7 @@ async function health(dataUrl) {
 
 // ---- Claude ----
 let sdkPromise = null;
-async function claude(system, content, schema) {
+async function claude(system, content, schema, opts = {}) {
   const k = keys().claude; if (!k) throw new Error("Claude 키가 없습니다 (설정 → 온라인 기능)");
   sdkPromise ??= import(SDK_URL);
   const { default: Anthropic } = await sdkPromise;
@@ -109,14 +109,21 @@ async function claude(system, content, schema) {
   const messages = Array.isArray(content) && content[0]?.role ? content : [{ role: "user", content }];
   const body = { model: CLAUDE_MODEL, max_tokens: 16000, system, messages,
                  output_config: { effort: "medium", ...(schema ? { format: { type: "json_schema", schema } } : {}) } };
-  let res;
-  try {
-    res = await client.beta.messages.create({ ...body, betas: ["server-side-fallback-2026-07-01"], fallbacks: "default" });
-  } catch (e) {
-    if (e.status === 400 && /fallback|beta/i.test(apiMessage(e))) {
-      try { res = await client.messages.create(body); } catch (e2) { throw new Error(claudeError(e2)); }
-    } else throw new Error(claudeError(e));
+  if (opts.tools) body.tools = opts.tools;
+  const call = async () => {
+    try { return await client.beta.messages.create({ ...body, betas: ["server-side-fallback-2026-07-01"], fallbacks: "default" }); }
+    catch (e) {
+      if (e.status === 400 && /fallback|beta/i.test(apiMessage(e))) { try { return await client.messages.create(body); } catch (e2) { throw new Error(claudeError(e2)); } }
+      throw new Error(claudeError(e));
+    }
+  };
+  let res = await call();
+  const blocks = [...res.content];
+  for (let i = 0; i < 4 && res.stop_reason === "pause_turn"; i++) {       // a long web search pauses; send it back to continue
+    body.messages = [...body.messages, { role: "assistant", content: res.content }];
+    res = await call(); blocks.push(...res.content);
   }
+  if (opts.raw) { if (res.stop_reason === "refusal") throw new Error("Claude가 이 요청에 답하지 않았습니다"); return { ...res, content: blocks }; }
   if (res.stop_reason === "refusal") throw new Error("Claude가 이 요청에 답하지 않았습니다");
   if (res.stop_reason === "max_tokens") throw new Error("답이 너무 길어 잘렸습니다. 다시 시도해 주세요");
   const text = res.content.filter(b => b.type === "text").map(b => b.text).join("");
@@ -443,5 +450,78 @@ function renderChat() {
       $("cmsg").innerHTML = `<span style="color:var(--red)">${esc(err.message)}</span>`;
       $("csend").disabled = false; $("csend").textContent = "보내기";
     }
+  };
+}
+
+
+// ---- 전문 진단: Claude looks up the species on trustworthy sites (web search) and compares with this pot's own records ----
+const EXPERT_SYSTEM = "당신은 실내 식물 원예 전문가입니다. 웹 검색으로 이 수종에 대해 믿을 만한 출처(대학 원예학과, 식물원, 왕립원예협회 같은 기관, 전문 재배 자료)를 찾아 확인하고, " +
+  "주인의 실제 기록(센서 수분 %, 마르는 속도, 위치, 화분, 물 간격)과 비교해 평가합니다. 숫자는 가능한 한 구체적으로(빛은 lux 범위와 하루 시간, 흙 수분은 이 센서 %로 환산한 범위). " +
+  "답은 한국어로, 휴대폰에서 읽기 좋게 다음 제목 순서로 씁니다: '## 필요한 빛', '## 적정 흙 수분', '## 지금 상태', '## 권하는 조정'. 근거가 약하면 그렇다고 밝힙니다.";
+const EXPERT_PICK = {
+  type: "object", additionalProperties: false,
+  required: ["summary", "water_warm_days", "water_cold_days", "moisture_min_pct", "light"],
+  properties: {
+    summary: { type: "string", description: "한 줄 요약" },
+    water_warm_days: { type: "integer", description: "권하는 따뜻한 계절 물 간격(일), 바꿀 필요 없으면 0" },
+    water_cold_days: { type: "integer", description: "권하는 추운 계절 물 간격(일), 바꿀 필요 없으면 0" },
+    moisture_min_pct: { type: "integer", description: "권하는 '물 줄 기준 수분 %', 바꿀 필요 없으면 0" },
+    light: { type: "string", description: "필요한 빛 한 줄(예: 밝은 간접광 10,000~20,000 lux, 하루 6시간)" },
+  },
+};
+function expertCardHtml(p) {
+  const k = keys(), reports = logsOf(p.id, "report");
+  return `<h2>전문 진단</h2><div class="card" id="ex">
+    <p class="small" style="margin-top:0">Claude가 웹에서 이 수종의 필요한 빛과 흙 수분을 찾아보고, 이 화분의 센서 기록·위치·화분과 비교합니다. 1~2분 걸립니다.</p>
+    <button class="btn btn-moist" id="exgo" style="width:100%" ${k.claude ? "" : "disabled"}>${k.claude ? "전문 진단 받기" : "전문 진단 (설정 → 온라인 기능에서 Claude 키 필요)"}</button>
+    <div id="exres"></div>
+    ${reports.length ? `<div class="small" style="margin-top:10px"><b>지난 진단</b></div>${reports.slice(0, 5).map(r => `<details style="margin-top:6px"><summary class="small">${esc(r.date)} · ${esc(r.note || "")}</summary><div style="margin-top:6px">${mdLite(r.text || "")}</div>${(r.sources || []).length ? `<div class="small" style="margin-top:6px">출처: ${r.sources.map(s => `<a href="${esc(s.url)}" target="_blank" rel="noopener">${esc(s.title || s.url)}</a>`).join(" · ")}</div>` : ""}</details>`).join("")}` : ""}
+  </div>`;
+}
+async function expertContext(p) {
+  let sensorText = "토양 센서 없음";
+  if (p.sensorCh) {
+    try {
+      const h = await sensorHistory(p.sensorCh), vals = h.points.map(x => x[1]);
+      sensorText = `Ecowitt 토양 센서 CH${p.sensorCh}: 지금 ${vals.at(-1) ?? "?"}%, 최근 14일 최저 ${Math.min(...vals)}% 최고 ${Math.max(...vals)}%, 평소 하루 ${h.usualDrop ?? "?"}%씩 마름` +
+        `, 날짜별(마른 양): ${h.days.map(d => `${d.day.slice(5)} ${d.drop}%${d.watered ? "(물)" : ""}`).join(", ")}`;
+    } catch (e) { sensorText = `토양 센서 CH${p.sensorCh} (기록을 못 불러옴: ${e.message})`; }
+  }
+  return `${plantContext(p)}\n식물 크기: ${p.sizeCm ? p.sizeCm + "cm" : "?"}\n${sensorText}\n` +
+    `PLANTA에 있던 참고(믿을 만한지 확인 필요): ${JSON.stringify(p.careRef || {})}`;
+}
+function bindExpert(p) {
+  const go = sheet.querySelector("#exgo"); if (!go) return;
+  go.onclick = async () => {
+    const out = sheet.querySelector("#exres");
+    go.disabled = true; go.textContent = "웹에서 찾아보고 기록과 비교하는 중… (1~2분)"; out.innerHTML = "";
+    try {
+      const ctx = await expertContext(p);
+      const res = await claude(EXPERT_SYSTEM, [{ type: "text", text: `${ctx}\n\n이 화분을 진단해 주세요.` }], null,
+        { tools: [{ type: "web_search_20260209", name: "web_search", max_uses: 5 }], raw: true });
+      const text = res.content.filter(b => b.type === "text").map(b => b.text).join("").trim();
+      const seen = new Set(), sources = [];
+      for (const b of res.content) {
+        if (b.type === "web_search_tool_result" && Array.isArray(b.content)) for (const r of b.content) if (r.url && !seen.has(r.url)) { seen.add(r.url); sources.push({ url: r.url, title: r.title || "" }); }
+        if (b.type === "text") for (const c of b.citations || []) if (c.url && !seen.has(c.url)) { seen.add(c.url); sources.push({ url: c.url, title: c.title || "" }); }
+      }
+      const pick = await claude("다음 진단 보고서에서 값을 뽑습니다. 보고서에 없는 값은 0으로 둡니다.", [{ type: "text", text: `현재: 물 따뜻 ${p.water.warm}일, 추운 ${p.water.cold}일, 기준 수분 ${p.moistureMin}%\n\n${text}` }], EXPERT_PICK);
+      db.log.push({ id: uid(), plant: p.id, type: "report", date: today(), note: pick.summary, text, sources: sources.slice(0, 8), light: pick.light });
+      save();
+      const s = season(today()), ch = [];
+      if (pick.water_warm_days && pick.water_warm_days !== p.water.warm) ch.push(["water.warm", pick.water_warm_days, `물 따뜻한 계절 ${p.water.warm}일 → ${pick.water_warm_days}일`]);
+      if (pick.water_cold_days && pick.water_cold_days !== p.water.cold) ch.push(["water.cold", pick.water_cold_days, `물 추운 계절 ${p.water.cold}일 → ${pick.water_cold_days}일`]);
+      if (pick.moisture_min_pct && pick.moisture_min_pct !== p.moistureMin) ch.push(["moistureMin", pick.moisture_min_pct, `물 줄 기준 수분 ${p.moistureMin}% → ${pick.moisture_min_pct}%`]);
+      drawPlant(p);
+      const box = sheet.querySelector("#exres");
+      box.innerHTML = `<div class="card suggest" style="margin:10px 0 0"><p><b>${esc(pick.summary)}</b></p>${mdLite(text)}
+        ${sources.length ? `<div class="small" style="margin-top:8px">출처: ${sources.slice(0, 8).map(x => `<a href="${esc(x.url)}" target="_blank" rel="noopener">${esc(x.title || x.url)}</a>`).join(" · ")}</div>` : ""}
+        ${ch.length ? `<div style="margin-top:10px">${ch.map((c, i) => `<button class="btn btn-ghost" data-exa="${i}" style="width:100%;margin-top:6px">적용: ${esc(c[2])}</button>`).join("")}</div>` : `<p class="small">지금 일정은 그대로 두어도 된다는 판단입니다.</p>`}</div>`;
+      for (const b of box.querySelectorAll("[data-exa]")) b.onclick = () => {
+        const [k, v, label] = ch[+b.dataset.exa], [a, c] = k.split(".");
+        if (c) p[a][c] = v; else p[a] = v;
+        db.log.push({ id: uid(), plant: p.id, type: "edit", date: today(), note: label + " (전문 진단)" }); save(); b.disabled = true; b.textContent = "적용했습니다: " + label;
+      };
+    } catch (e) { out.innerHTML = `<p class="small" style="color:var(--red)">진단 실패: ${esc(e.message)}</p>`; go.disabled = false; go.textContent = "다시 시도"; }
   };
 }
