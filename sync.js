@@ -35,7 +35,7 @@ function applyRows(rows) {
 }
 
 let syncTimer = null, syncing_ = null, syncAgain = false, lastSyncAt = 0, lastSyncError = "";
-function scheduleSync() { if (!serverOn()) return; clearTimeout(syncTimer); syncTimer = setTimeout(() => syncNow().catch(() => {}), 1500); }
+function scheduleSync() { if (!serverOn()) return; clearTimeout(syncTimer); syncTimer = setTimeout(() => syncNow().catch(e => reportError(e.message, "sync")), 1500); }
 async function serverCall(path, body) {
   const k = keys();
   let r;

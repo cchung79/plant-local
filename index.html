@@ -99,6 +99,18 @@ a { color: var(--green); }
 <script id="seed" type="application/json">{"version": 1, "source": "", "seasons": {"warm": [3, 10], "cold": [11, 2]}, "plants": []}</script>
 <script>
 "use strict";
+// ---- 진단: an error anywhere shows as a red bar (screenshot it) and goes to the server log when connected ----
+const DIAG = [];
+function reportError(msg, where) {
+  const text = `${new Date().toTimeString().slice(0, 8)} ${where || ""} ${msg}`.trim();
+  DIAG.push(text); if (DIAG.length > 20) DIAG.shift();
+  let bar = document.getElementById("diag");
+  if (!bar) { bar = document.createElement("div"); bar.id = "diag"; bar.style.cssText = "position:fixed;top:0;left:0;right:0;z-index:99;background:#c0392b;color:#fff;font:12px/1.4 monospace;padding:6px 8px;max-height:40vh;overflow:auto;white-space:pre-wrap"; bar.onclick = () => bar.remove(); document.body.appendChild(bar); }
+  bar.textContent = "오류 (이 화면을 찍어 보내 주세요, 누르면 닫힘)\n" + DIAG.slice(-5).join("\n");
+  try { if (typeof serverOn === "function" && serverOn()) serverCall("/api/clientlog", { msg: text, ua: navigator.userAgent, v: typeof APP_VERSION !== "undefined" ? APP_VERSION : "?" }).catch(() => {}); } catch (e) {}
+}
+window.addEventListener("error", e => reportError(`${e.message} @${(e.filename || "").split("/").pop()}:${e.lineno}:${e.colno}`, "error"));
+window.addEventListener("unhandledrejection", e => reportError(String(e.reason && (e.reason.stack || e.reason.message) || e.reason).slice(0, 300), "promise"));
 // ---- storage: everything stays on this phone (localStorage); backup = export/import a JSON file ----
 const KEY = "plantlocal.v1";
 let db;
@@ -532,7 +544,7 @@ if (location.hash.startsWith("#connect=")) {
 const removed = dedupe(); if (removed) setTimeout(() => toast(`같은 날 중복 기록 ${removed}건을 정리했습니다`), 300);
 save(); render();
 // ---- updates: check on every open/return; when a new version takes over, reload once (not while a plant is open) ----
-const APP_VERSION = "18";
+const APP_VERSION = "19";
 let pendingReload = false;
 if ("serviceWorker" in navigator && (location.protocol === "https:" || ["localhost", "127.0.0.1"].includes(location.hostname))) {
   const hadController = !!navigator.serviceWorker.controller;
