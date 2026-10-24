@@ -35,12 +35,12 @@ nav button { flex: 1; border: 0; background: none; color: var(--sub); font: inhe
 nav button.on { color: var(--green); font-weight: 700; }
 h2 { font-size: 15px; color: var(--sub); margin: 18px 0 8px; font-weight: 600; }
 .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 12px 14px; margin-bottom: 10px; }
-/* the name keeps at least about half the row; when the badges do not fit beside it they move to a line below */
-.plant { display: flex; align-items: center; gap: 8px 10px; cursor: pointer; flex-wrap: wrap; }
-.plant .main { flex: 1 1 150px; min-width: 150px; }
-.plant .name { font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* every card the same shape: name and place on the left (a long name wraps, never cut), status badges stacked on the right */
+.plant { display: flex; align-items: center; gap: 10px; cursor: pointer; }
+.plant .main { flex: 1; min-width: 0; }
+.plant .name { font-weight: 700; overflow-wrap: anywhere; }
 .plant .loc { color: var(--sub); font-size: 13px; }
-.badges { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+.badges { display: flex; flex-direction: column; align-items: flex-end; gap: 5px; flex: none; }
 .badge { font-size: 13px; padding: 3px 8px; border-radius: 999px; white-space: nowrap; }
 .b-water { background: var(--blue-soft); color: var(--blue); }
 .b-fert { background: var(--brown-soft); color: var(--brown); }
@@ -95,9 +95,9 @@ a { color: var(--green); }
 </nav>
 <div class="toast" id="toast"></div>
 
-<script src="online.js?v=25"></script>
-<script src="sensor.js?v=25"></script>
-<script src="sync.js?v=25"></script>
+<script src="online.js?v=27"></script>
+<script src="sensor.js?v=27"></script>
+<script src="sync.js?v=27"></script>
 <script id="seed" type="application/json">{"version": 1, "source": "", "seasons": {"warm": [3, 10], "cold": [11, 2]}, "plants": []}</script>
 <script>
 "use strict";
@@ -202,8 +202,8 @@ function plantRow(p) {
   const m = lastMoist(p);
   return `<div class="card plant" data-open="${p.id}">
     ${p.photo ? `<img src="${p.photo}" alt="" style="width:44px;height:44px;object-fit:cover;border-radius:10px;flex:none">` : ""}
-    <div class="main"><div class="name">${esc(p.name)}</div><div class="loc">${esc(p.location)}${m ? ` · 수분 ${m.value}% (${md(m.date)})` : ""}</div></div>
-    <div class="badges">${m && m.value <= p.moistureMin ? `<span class="badge b-late">흙 마름 ${m.value}%</span>` : ""}${badge(p, "water")}${badge(p, "fert")}</div></div>`;
+    <div class="main"><div class="name">${esc(p.name)}</div><div class="loc">${esc(p.location)}</div></div>
+    <div class="badges">${m ? (m.value <= p.moistureMin ? `<span class="badge b-late">흙 마름 ${m.value}%</span>` : `<span class="badge b-moist">수분 ${m.value}%</span>`) : ""}${badge(p, "water")}${badge(p, "fert")}</div></div>`;
 }
 function renderTodo() {
   if (!db.plants.length) {
@@ -595,7 +595,7 @@ pruneTrash();
 const removed = dedupe(); if (removed) setTimeout(() => toast(`같은 날 중복 기록 ${removed}건을 정리했습니다`), 300);
 save(); render();
 // ---- updates: check on every open/return; when a new version takes over, reload once (not while a plant is open) ----
-const APP_VERSION = "25";
+const APP_VERSION = "27";
 let pendingReload = false;
 if ("serviceWorker" in navigator && (location.protocol === "https:" || ["localhost", "127.0.0.1"].includes(location.hostname))) {
   const hadController = !!navigator.serviceWorker.controller;

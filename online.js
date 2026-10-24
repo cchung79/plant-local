@@ -428,7 +428,12 @@ function renderChat() {
   $("ct").onchange = () => { db.chatTarget = $("ct").value; save(); renderChat(); };
   $("cph").onchange = async e => {
     const f = e.target.files[0]; if (!f) return;
-    try { chatPhoto = (await readImage(f, 1280, 0.85)).dataUrl; renderChat(); } catch (err) { toast(err.message); }
+    try {
+      // only the preview changes — redrawing the whole screen would swap the question box while someone is typing in it
+      chatPhoto = (await readImage(f, 1280, 0.85)).dataUrl;
+      const prev = document.getElementById("cprev"); if (prev) prev.innerHTML = `<img src="${chatPhoto}" style="max-height:120px;border-radius:10px">`;
+      const lab = document.getElementById("cph")?.parentElement; if (lab && lab.firstChild) lab.firstChild.textContent = "사진 바꾸기";
+    } catch (err) { toast(err.message); }
   };
   $("cclear").onclick = () => { if (confirm("이 대화를 지우고 새로 시작할까요?")) { db.chats[target] = []; save(); renderChat(); } };
   $("csend").onclick = async () => {
