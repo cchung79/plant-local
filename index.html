@@ -95,6 +95,7 @@ a { color: var(--green); }
 
 <script src="online.js"></script>
 <script src="sensor.js"></script>
+<script src="sync.js"></script>
 <script id="seed" type="application/json">{"version": 1, "source": "", "seasons": {"warm": [3, 10], "cold": [11, 2]}, "plants": []}</script>
 <script>
 "use strict";
@@ -107,6 +108,7 @@ function load() {
 }
 function save() {
   try { localStorage.setItem(KEY, JSON.stringify(db)); } catch (e) { toast("저장 실패: 저장 공간을 확인하세요"); }
+  if (typeof scheduleSync === "function") scheduleSync();
 }
 function fromSeed() {
   const seed = JSON.parse(document.getElementById("seed").textContent);
@@ -228,11 +230,13 @@ function menuRow(id, title, sub) {
 function renderSettings() {
   if (settingsSub === "eco") return subPage("Ecowitt 센서", `<div class="card">${ecoSettingsHtml()}</div>`);
   if (settingsSub === "online") return subPage("온라인 기능", keysSettingsHtml());
+  if (settingsSub === "server") { subPage("서버 연결", serverSettingsHtml()); bindServerSettings(); return; }
   const k = keys(), linked = db.plants.filter(p => p.sensorCh).length;
   const onl = [k.plantnet && "사진 식별", k.claude && "Claude", k.kindwise && "병해 진단", k.perenual && "Perenual"].filter(Boolean);
   view.innerHTML = `
   <h2>연결</h2>
   ${menuRow("go-eco", "Ecowitt 센서", k.ecowitt_mac ? `${esc(k.ecowitt_name || "게이트웨이")} · 센서 ${linked}개 화분에 연결` : "토양 수분 센서 연결하기")}
+  ${menuRow("go-server", "서버 연결", serverOn() ? `연결됨 · 아이폰·노트10 같은 기록, 센서는 서버가 15분마다` : "두 폰을 같은 기록으로 맞추기")}
   ${menuRow("go-online", "온라인 기능", onl.length ? `켜짐: ${onl.join(", ")}` : "사진으로 식물 찾기 · Claude 키 넣기")}
   <h2>계절</h2>
   <div class="card">
@@ -262,6 +266,7 @@ function renderSettings() {
   };
   document.getElementById("go-eco").onclick = () => { settingsSub = "eco"; renderSettings(); };
   document.getElementById("go-online").onclick = () => { settingsSub = "online"; renderSettings(); };
+  document.getElementById("go-server").onclick = () => { settingsSub = "server"; renderSettings(); };
   document.getElementById("ws").onchange = setSeason; document.getElementById("we").onchange = setSeason;
   document.getElementById("exp").onclick = () => {
     const blob = new Blob([JSON.stringify(db, null, 1)], { type: "application/json" });
@@ -496,6 +501,7 @@ document.addEventListener("visibilitychange", () => {
   if (document.hidden) return;
   if (!sheet && (tab === "todo" || tab === "plants")) render();
   syncSensors().then(c => { if (c && !sheet && (tab === "todo" || tab === "plants")) render(); }).catch(() => {});
+  syncNow().catch(() => {});
 });
 
 db = load() || fromSeed();
@@ -519,10 +525,14 @@ if (location.hash.startsWith("#import=")) {
   history.replaceState(null, "", location.pathname);
 }
 setTimeout(() => syncSensors().then(c => { if (c && !sheet && (tab === "todo" || tab === "plants")) render(); }).catch(() => {}), 300);
+if (location.hash.startsWith("#connect=")) {
+  const code = location.hash.slice(9); history.replaceState(null, "", location.pathname);
+  setTimeout(() => connectWith(code, "merge").then(() => { toast("서버에 연결했습니다"); render(); }).catch(e => toast(e.message)), 200);
+} else setTimeout(() => syncNow().catch(() => {}), 200);
 const removed = dedupe(); if (removed) setTimeout(() => toast(`같은 날 중복 기록 ${removed}건을 정리했습니다`), 300);
 save(); render();
 // ---- updates: check on every open/return; when a new version takes over, reload once (not while a plant is open) ----
-const APP_VERSION = "17";
+const APP_VERSION = "18";
 let pendingReload = false;
 if ("serviceWorker" in navigator && (location.protocol === "https:" || ["localhost", "127.0.0.1"].includes(location.hostname))) {
   const hadController = !!navigator.serviceWorker.controller;

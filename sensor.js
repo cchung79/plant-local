@@ -53,6 +53,10 @@ async function ecoHistory(ch, days = 7) {
 // read the sensors, keep readings in each plant's records, and notice probable watering
 let syncing = null;
 async function syncSensors(force) {
+  if (typeof serverOn === "function" && serverOn()) {
+    if (force) { await syncNow(); await serverCall("/api/collect", {}); await syncNow(); }    // send new links first
+    return sensorCache();
+  }
   if (!ecoReady() || !keys().ecowitt_mac) return null;
   const c = sensorCache();
   if (!force && c.fetchedAt && Date.now() - c.fetchedAt < SYNC_EVERY_MS) return c;
@@ -85,7 +89,7 @@ function agoText(ms) { const m = Math.round(ms / 60000); return m < 1 ? "방금"
 
 // ---- 할 일 화면 위쪽: sensor status + "물 주셨나요?" cards ----
 function sensorTopHtml() {
-  if (!ecoReady()) return "";
+  if (!ecoReady() && !(typeof serverOn === "function" && serverOn() && db.plants.some(p => p.sensorCh))) return "";
   const c = sensorCache(), pend = (db.pending || []).filter(e => db.plants.some(p => p.id === e.plant));
   const linked = db.plants.filter(p => p.sensorCh).length;
   return pend.map(e => { const p = db.plants.find(x => x.id === e.plant);
@@ -108,7 +112,7 @@ function bindSensorTop() {
 
 // ---- plant sheet: channel choice + 7-day graph ----
 function sensorFieldHtml(p) {
-  if (!ecoReady()) return "";
+  if (!ecoReady() && !(typeof serverOn === "function" && serverOn())) return "";
   const ch = sensorCache().channels || {};
   const opts = Array.from({ length: 16 }, (_, i) => i + 1).map(n =>
     `<option value="${n}" ${p.sensorCh === n ? "selected" : ""}>CH${n}${ch[n] ? ` · 지금 ${ch[n].pct}%` : ""}</option>`).join("");
