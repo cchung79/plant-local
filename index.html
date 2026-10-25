@@ -97,7 +97,7 @@ a { color: var(--green); }
 </style>
 </head>
 <body>
-<header><h1 id="title">우리 집 식물 <span class="ver">v35</span></h1><div class="sub" id="today"></div></header>
+<header><h1 id="title">우리 집 식물 <span class="ver">v36</span></h1><div class="sub" id="today"></div></header>
 <main id="view"></main>
 <nav>
   <button data-tab="todo" class="on">할 일</button>
@@ -107,9 +107,9 @@ a { color: var(--green); }
 </nav>
 <div class="toast" id="toast"></div>
 
-<script src="online.js?v=35"></script>
-<script src="sensor.js?v=35"></script>
-<script src="sync.js?v=35"></script>
+<script src="online.js?v=36"></script>
+<script src="sensor.js?v=36"></script>
+<script src="sync.js?v=36"></script>
 <script id="seed" type="application/json">{"version": 1, "source": "", "seasons": {"warm": [3, 10], "cold": [11, 2]}, "plants": []}</script>
 <script>
 "use strict";
@@ -523,8 +523,9 @@ function afterMoist(p, v, date) {
   const until = addDays(date, days);
   const out = { text: `수분 ${v}% — 아직 촉촉합니다(기준 ${p.moistureMin}%). ` +
       (ms.length && days ? `지금 마르는 속도면 약 <b>${days}일 뒤</b> 기준에 닿습니다.` : `<b>${days}일 뒤</b> 다시 재 보세요.`), actions: [] };
-  if (!wd.unknown && !wd.none && wd.date < until)
+  if (!wd.unknown && !wd.none && wd.date < until) {
     out.actions.push({ t: `물 ${md(until)}로 미루기`, f: () => { db.log.push({ id: uid(), plant: p.id, type: "snooze", kind: "water", date, until }); save(); drawPlant(p); toast(`물을 ${md(until)}로 미뤘습니다`); } });
+  }
   return out;
 }
 function afterWater(p, date) {      // watering on a day the soil was measured dry: offer the real interval
@@ -674,7 +675,7 @@ pruneTrash();
 const removed = dedupe(); if (removed) setTimeout(() => toast(`같은 날 중복 기록 ${removed}건을 정리했습니다`), 300);
 save(); render();
 // ---- updates: check on every open/return; when a new version takes over, reload once (not while a plant is open) ----
-const APP_VERSION = "35";
+const APP_VERSION = "36";
 let pendingReload = false;
 if ("serviceWorker" in navigator && (location.protocol === "https:" || ["localhost", "127.0.0.1"].includes(location.hostname))) {
   const hadController = !!navigator.serviceWorker.controller;
