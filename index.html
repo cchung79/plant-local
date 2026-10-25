@@ -47,6 +47,8 @@ h2 { font-size: 15px; color: var(--sub); margin: 18px 0 8px; font-weight: 600; }
 .amts { display: flex; gap: 14px; margin-bottom: 8px; font-size: 15px; color: var(--sub); flex-wrap: wrap; }
 .amts label { display: flex; align-items: center; gap: 6px; } .amts input { width: 70px; font-size: 16px; padding: 7px 8px; } .amts #famt { width: 96px; }
 button.badge.amt { border: 0; font: inherit; font-size: 14px; padding: 5px 10px; cursor: pointer; }
+.todayamt { flex: none; display: flex; align-items: center; gap: 3px; font-size: 15px; color: var(--sub); }
+.todayamt input { width: 58px; font-size: 17px; padding: 6px 6px; text-align: right; }
 .amtbox { display: flex; align-items: center; gap: 6px; font-size: 15px; } .amtbox input { width: 72px; font-size: 16px; padding: 6px 8px; }
 .b-water { background: var(--blue-soft); color: var(--blue); }
 .b-fert { background: var(--brown-soft); color: var(--brown); }
@@ -102,9 +104,9 @@ a { color: var(--green); }
 </nav>
 <div class="toast" id="toast"></div>
 
-<script src="online.js?v=30"></script>
-<script src="sensor.js?v=30"></script>
-<script src="sync.js?v=30"></script>
+<script src="online.js?v=31"></script>
+<script src="sensor.js?v=31"></script>
+<script src="sync.js?v=31"></script>
 <script id="seed" type="application/json">{"version": 1, "source": "", "seasons": {"warm": [3, 10], "cold": [11, 2]}, "plants": []}</script>
 <script>
 "use strict";
@@ -238,7 +240,8 @@ function renderTodo() {
     (now.length ? now.map(x => plantRow(x[1])).join("") : `<div class="empty">${done.length ? "오늘 할 일을 다 했습니다" : "오늘은 할 일이 없습니다"}</div>`) +
     (done.length ? `<h2 style="font-size:17px;color:var(--ink)">오늘 한 일 · ${done.length}그루</h2>` + done.map(([p, did]) => `<div class="card plant" data-open="${p.id}">
       <div class="main"><div class="name">${esc(p.name)}</div><div class="loc">${esc(p.location)}</div></div>
-      <div class="badges">${did.map(l => `<button class="badge b-moist amt" data-amt="${l.id}">${l.type === "water" ? "물" : "비료"} ${amountText(l) || "줌"} ✓</button>`).join("")}</div></div>`).join("") : "") +
+      ${(w => w ? `<label class="todayamt">💧<input type="number" inputmode="decimal" step="0.1" min="0" data-wl="${w.id}" value="${w.amount ?? ""}" placeholder="${p.waterL ?? "—"}">L</label>` : "")(did.find(l => l.type === "water"))}
+      <div class="badges">${did.map(l => l.type === "water" ? `<span class="badge b-moist">물 ✓</span>` : `<button class="badge b-moist amt" data-amt="${l.id}">비료 ${amountText(l) || ""} ✓</button>`).join("")}</div></div>`).join("") : "") +
     (unknown.length ? `<h2>마지막 기록이 없음 — 물 준 날을 넣어 주세요</h2>${unknown.map(plantRow).join("")}` : "") +
     `<h2 style="font-size:17px;color:var(--ink);margin-top:28px">다음 일정</h2>` +
     [...next.keys()].sort().map(d => `<h2>${dayHead(d)}</h2>${next.get(d).map(plantRow).join("")}`).join("");
@@ -571,10 +574,18 @@ function render() {
 }
 document.querySelector("nav").onclick = e => { const t = e.target.dataset.tab; if (t) { tab = t; settingsSub = null; sheet?.remove(); sheet = null; document.body.classList.remove("locked"); render(); window.scrollTo(0, 0); } };
 view.onclick = e => {
+  if (e.target.closest(".todayamt")) return;                // typing today's litres must not open the plant
   const a = e.target.closest("[data-amt]"); if (a) return editAmount(a);
   const c = e.target.closest("[data-open]"); if (c) openPlant(c.dataset.open);
 };
 // how much was given: water in litres (a number), fertilizer as written (e.g. "2mL", "반 스푼")
+// 오늘 한 일: the litres box between the name and the ✓ — saved as soon as it is changed
+view.addEventListener("change", e => {
+  const inp = e.target.closest("[data-wl]"); if (!inp) return;
+  const l = db.log.find(x => x.id === inp.dataset.wl); if (!l) return;
+  const n = parseFloat(inp.value); if (n > 0) l.amount = Math.round(n * 100) / 100; else delete l.amount;
+  save(); toast(n > 0 ? `오늘 물 ${l.amount}L 기록했습니다` : "오늘 물 양을 지웠습니다");
+});
 function amountText(l) { return l.amount == null || l.amount === "" ? "" : l.type === "water" ? `${l.amount}L` : String(l.amount); }
 function editAmount(btn) {
   const l = db.log.find(x => x.id === btn.dataset.amt); if (!l) return;
@@ -627,7 +638,7 @@ pruneTrash();
 const removed = dedupe(); if (removed) setTimeout(() => toast(`같은 날 중복 기록 ${removed}건을 정리했습니다`), 300);
 save(); render();
 // ---- updates: check on every open/return; when a new version takes over, reload once (not while a plant is open) ----
-const APP_VERSION = "30";
+const APP_VERSION = "31";
 let pendingReload = false;
 if ("serviceWorker" in navigator && (location.protocol === "https:" || ["localhost", "127.0.0.1"].includes(location.hostname))) {
   const hadController = !!navigator.serviceWorker.controller;
