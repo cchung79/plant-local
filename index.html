@@ -106,9 +106,9 @@ a { color: var(--green); }
 </nav>
 <div class="toast" id="toast"></div>
 
-<script src="online.js?v=33"></script>
-<script src="sensor.js?v=33"></script>
-<script src="sync.js?v=33"></script>
+<script src="online.js?v=34"></script>
+<script src="sensor.js?v=34"></script>
+<script src="sync.js?v=34"></script>
 <script id="seed" type="application/json">{"version": 1, "source": "", "seasons": {"warm": [3, 10], "cold": [11, 2]}, "plants": []}</script>
 <script>
 "use strict";
@@ -243,7 +243,7 @@ function renderTodo() {
     `<h2 style="font-size:17px;color:var(--ink)">오늘 할 일 · ${md(today())} (${wd(today())})${now.length ? ` · ${now.length}그루` : ""}</h2>` +
     (now.length ? now.map(x => plantRow(x[1])).join("") : `<div class="empty">${done.length ? "오늘 할 일을 다 했습니다" : "오늘은 할 일이 없습니다"}</div>`) +
     (done.length ? `<h2 style="font-size:17px;color:var(--ink)">오늘 한 일 · ${done.length}그루</h2>` + done.map(([p, did]) => doneRow(p, did)).join("") : "") +
-    (yesterday.length ? `<h2>어제 한 일 · ${md(addDays(today(), -1))} — 모자라면 [+ 추가]로 오늘 더 준 양을</h2>` + yesterday.map(([p, did]) => doneRow(p, did, true)).join("") : "") +
+    (yesterday.length ? `<h2>어제 한 일 · ${md(addDays(today(), -1))}</h2>` + yesterday.map(([p, did]) => doneRow(p, did, true)).join("") : "") +
     (unknown.length ? `<h2>마지막 기록이 없음 — 물 준 날을 넣어 주세요</h2>${unknown.map(plantRow).join("")}` : "") +
     `<h2 style="font-size:17px;color:var(--ink);margin-top:28px">다음 일정</h2>` +
     [...next.keys()].sort().map(d => `<h2>${dayHead(d)}</h2>${next.get(d).map(plantRow).join("")}`).join("");
@@ -383,8 +383,8 @@ function drawPlant(p, isNew) {
     <div class="card">
       <div class="field"><label>물 · 따뜻한 계절<span class="hint">${monthsText("warm")}</span></label><div class="unit"><input type="number" inputmode="numeric" data-k="water.warm" value="${p.water.warm ?? ""}"><span>일</span></div></div>
       <div class="field"><label>물 · 추운 계절<span class="hint">${monthsText("cold")}</span></label><div class="unit"><input type="number" inputmode="numeric" data-k="water.cold" value="${p.water.cold ?? ""}"><span>일</span></div></div>
-      <div class="field"><label>1회 용수량<span class="hint">한 번 물 줄 때 주는 양</span></label><div class="unit"><input type="number" inputmode="decimal" step="0.05" min="0" data-k="waterL" value="${p.waterL ?? ""}"><span>L</span></div></div>
-      <div class="field"><label>최대 관수 무게<span class="hint">물을 흠뻑 준 직후 화분 무게</span></label><div class="unit"><input type="number" inputmode="decimal" step="0.1" min="0" data-k="maxKg" value="${p.maxKg ?? ""}"><span>kg</span></div></div>
+      <div class="field"><label>1회 용수량</label><div class="unit"><input type="number" inputmode="decimal" step="0.05" min="0" data-k="waterL" value="${p.waterL ?? ""}"><span>L</span></div></div>
+      <div class="field"><label>최대 관수 무게</label><div class="unit"><input type="number" inputmode="decimal" step="0.1" min="0" data-k="maxKg" value="${p.maxKg ?? ""}"><span>kg</span></div></div>
       <div class="toggle"><label for="fon">비료 일정 사용</label><input type="checkbox" id="fon" style="width:auto;transform:scale(1.4)" ${p.fert.on ? "checked" : ""}></div>
       <div class="field" ${p.fert.on ? "" : 'style="opacity:.4"'}><label>비료 · 따뜻한 계절<span class="hint">비우면 안 함</span></label><div class="unit"><input type="number" inputmode="numeric" data-k="fert.warm" value="${p.fert.warm ?? ""}" ${p.fert.on ? "" : "disabled"}><span>일</span></div></div>
       <div class="field" ${p.fert.on ? "" : 'style="opacity:.4"'}><label>비료 · 추운 계절<span class="hint">비우면 안 함</span></label><div class="unit"><input type="number" inputmode="numeric" data-k="fert.cold" value="${p.fert.cold ?? ""}" ${p.fert.on ? "" : "disabled"}><span>일</span></div></div>
@@ -673,7 +673,7 @@ pruneTrash();
 const removed = dedupe(); if (removed) setTimeout(() => toast(`같은 날 중복 기록 ${removed}건을 정리했습니다`), 300);
 save(); render();
 // ---- updates: check on every open/return; when a new version takes over, reload once (not while a plant is open) ----
-const APP_VERSION = "33";
+const APP_VERSION = "34";
 let pendingReload = false;
 if ("serviceWorker" in navigator && (location.protocol === "https:" || ["localhost", "127.0.0.1"].includes(location.hostname))) {
   const hadController = !!navigator.serviceWorker.controller;

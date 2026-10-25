@@ -1,6 +1,6 @@
 // Offline support. App files always come fresh from the server (bypassing the browser's HTTP cache, which
 // GitHub Pages sets to 10 minutes); the saved copy is used only when there is no network.
-const VERSION = "33";
+const VERSION = "34";
 const CACHE = "plantlocal-" + VERSION;
 const FILES = ["./", "index.html", "manifest.webmanifest", "online.js", "sensor.js", "sync.js", "icon-192.png", "icon-512.png"];
 self.addEventListener("install", e => e.waitUntil(
