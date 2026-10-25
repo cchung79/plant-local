@@ -48,7 +48,8 @@ h2 { font-size: 15px; color: var(--sub); margin: 18px 0 8px; font-weight: 600; }
 .amts label { display: flex; align-items: center; gap: 6px; } .amts input { width: 70px; font-size: 16px; padding: 7px 8px; } .amts #famt { width: 96px; }
 button.badge.amt { border: 0; font: inherit; font-size: 14px; padding: 5px 10px; cursor: pointer; }
 .todayamt { flex: none; display: flex; align-items: center; gap: 3px; font-size: 15px; color: var(--sub); }
-.todayamt input { width: 58px; font-size: 17px; padding: 6px 6px; text-align: right; }
+.todayamt input { width: 62px; font-size: 17px; padding: 6px 6px; text-align: right; -moz-appearance: textfield; }
+.todayamt input::-webkit-inner-spin-button, .todayamt input::-webkit-outer-spin-button, .amts input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
 .amtbox { display: flex; align-items: center; gap: 6px; font-size: 15px; } .amtbox input { width: 72px; font-size: 16px; padding: 6px 8px; }
 .b-water { background: var(--blue-soft); color: var(--blue); }
 .b-fert { background: var(--brown-soft); color: var(--brown); }
@@ -104,9 +105,9 @@ a { color: var(--green); }
 </nav>
 <div class="toast" id="toast"></div>
 
-<script src="online.js?v=31"></script>
-<script src="sensor.js?v=31"></script>
-<script src="sync.js?v=31"></script>
+<script src="online.js?v=32"></script>
+<script src="sensor.js?v=32"></script>
+<script src="sync.js?v=32"></script>
 <script id="seed" type="application/json">{"version": 1, "source": "", "seasons": {"warm": [3, 10], "cold": [11, 2]}, "plants": []}</script>
 <script>
 "use strict";
@@ -638,7 +639,7 @@ pruneTrash();
 const removed = dedupe(); if (removed) setTimeout(() => toast(`같은 날 중복 기록 ${removed}건을 정리했습니다`), 300);
 save(); render();
 // ---- updates: check on every open/return; when a new version takes over, reload once (not while a plant is open) ----
-const APP_VERSION = "31";
+const APP_VERSION = "32";
 let pendingReload = false;
 if ("serviceWorker" in navigator && (location.protocol === "https:" || ["localhost", "127.0.0.1"].includes(location.hostname))) {
   const hadController = !!navigator.serviceWorker.controller;
