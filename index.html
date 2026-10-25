@@ -72,6 +72,7 @@ select { -webkit-appearance: none; appearance: none; background-color: var(--bg)
 .field { display: grid; grid-template-columns: 1fr 110px; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--line); }
 .field:last-child { border-bottom: 0; }
 .field.wide { grid-template-columns: 52px 1fr; }
+h1 .ver { font-size: 13px; font-weight: 400; color: var(--sub); vertical-align: 3px; }
 .field label { font-size: 15px; }
 .field .hint { color: var(--sub); font-size: 12px; display: block; }
 .unit { display: flex; align-items: center; gap: 6px; }
@@ -96,7 +97,7 @@ a { color: var(--green); }
 </style>
 </head>
 <body>
-<header><h1 id="title">우리 집 식물</h1><div class="sub" id="today"></div></header>
+<header><h1 id="title">우리 집 식물 <span class="ver">v35</span></h1><div class="sub" id="today"></div></header>
 <main id="view"></main>
 <nav>
   <button data-tab="todo" class="on">할 일</button>
@@ -106,9 +107,9 @@ a { color: var(--green); }
 </nav>
 <div class="toast" id="toast"></div>
 
-<script src="online.js?v=34"></script>
-<script src="sensor.js?v=34"></script>
-<script src="sync.js?v=34"></script>
+<script src="online.js?v=35"></script>
+<script src="sensor.js?v=35"></script>
+<script src="sync.js?v=35"></script>
 <script id="seed" type="application/json">{"version": 1, "source": "", "seasons": {"warm": [3, 10], "cold": [11, 2]}, "plants": []}</script>
 <script>
 "use strict";
@@ -673,7 +674,7 @@ pruneTrash();
 const removed = dedupe(); if (removed) setTimeout(() => toast(`같은 날 중복 기록 ${removed}건을 정리했습니다`), 300);
 save(); render();
 // ---- updates: check on every open/return; when a new version takes over, reload once (not while a plant is open) ----
-const APP_VERSION = "34";
+const APP_VERSION = "35";
 let pendingReload = false;
 if ("serviceWorker" in navigator && (location.protocol === "https:" || ["localhost", "127.0.0.1"].includes(location.hostname))) {
   const hadController = !!navigator.serviceWorker.controller;
