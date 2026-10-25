@@ -96,14 +96,19 @@ function sensorTopHtml() {
       if (e.alert) return `<div class="card suggest" style="border-left-color:var(--red)"><p><b>${esc(p.name)}</b> · 센서 경고</p><p class="small" style="margin-top:-4px">${esc(e.text)}</p>
         <div class="row2"><button class="btn btn-ghost" data-open="${p.id}">식물 보기</button><button class="btn btn-ghost" data-pn="${e.id}">확인했어요</button></div></div>`;
       return `<div class="card suggest"><p><b>${esc(p.name)}</b> 흙 수분이 ${e.from}% → ${e.to}%로 올랐습니다 (${md(e.date)}). 물 주셨나요?</p>
-        <div class="row2"><button class="btn btn-water" data-pw="${e.id}">${md(e.date)} 물 준 날로 기록</button><button class="btn btn-ghost" data-pn="${e.id}">아니요</button></div></div>`; }).join("") +
-    `<div class="small" style="display:flex;justify-content:space-between;align-items:center;margin:4px 2px 0">
-      <span>Ecowitt 센서 ${linked}개 연결 · ${c.fetchedAt ? agoText(Date.now() - c.fetchedAt) + " 받음" : "아직 안 받음"}</span>
-      <button class="btn btn-ghost" id="ssync" style="padding:6px 10px">센서 새로 받기</button></div>`;
+        <div class="row2"><button class="btn btn-water" data-pw="${e.id}">${md(e.date)} 물 준 날로 기록</button><button class="btn btn-ghost" data-pn="${e.id}">아니요</button></div></div>`; }).join("");
+}
+// the sensor count sits at the right end of the title; tapping it fetches fresh readings
+function sensorBadge() {
+  const b = document.getElementById("ssync"); if (!b) return;
+  const on = ecoReady() || (typeof serverOn === "function" && serverOn() && db.plants.some(p => p.sensorCh));
+  b.hidden = !on; if (!on) return;
+  const c = sensorCache();
+  if (!b.disabled) b.textContent = `센서 ${db.plants.filter(p => p.sensorCh).length}`;
+  b.title = c.fetchedAt ? agoText(Date.now() - c.fetchedAt) + " 받음" : "아직 안 받음";
+  b.onclick = async () => { b.disabled = true; b.textContent = "받는 중…"; try { await syncSensors(true); } catch (e) { toast(e.message); } b.disabled = false; render(); };
 }
 function bindSensorTop() {
-  const b = document.getElementById("ssync");
-  if (b) b.onclick = async () => { b.disabled = true; b.textContent = "받는 중…"; try { await syncSensors(true); render(); } catch (e) { toast(e.message); b.disabled = false; b.textContent = "센서 새로 받기"; } };
   for (const x of document.querySelectorAll("[data-pw]")) x.onclick = () => {
     const e = db.pending.find(y => y.id === x.dataset.pw); if (!e) return;
     if (!logsOf(e.plant, "water").some(l => l.date === e.date)) db.log.push({ id: uid(), plant: e.plant, type: "water", date: e.date, note: "센서로 알아챔" });

@@ -72,6 +72,7 @@ select { -webkit-appearance: none; appearance: none; background-color: var(--bg)
 .field { display: grid; grid-template-columns: 1fr 110px; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--line); }
 .field:last-child { border-bottom: 0; }
 .field.wide { grid-template-columns: 52px 1fr; }
+.hsens { position: absolute; right: 16px; top: calc(env(safe-area-inset-top) + 14px); border: 1px solid var(--line); background: none; color: var(--sub); border-radius: 999px; padding: 4px 10px; font: inherit; font-size: 13px; }
 h1 .ver { font-size: 13px; font-weight: 400; color: var(--sub); vertical-align: 3px; }
 .field label { font-size: 15px; }
 .field .hint { color: var(--sub); font-size: 12px; display: block; }
@@ -97,7 +98,7 @@ a { color: var(--green); }
 </style>
 </head>
 <body>
-<header><h1 id="title">우리 집 식물 <span class="ver">v36</span></h1><div class="sub" id="today"></div></header>
+<header><h1 id="title">우리 집 식물 <span class="ver">v37</span></h1><div class="sub" id="today"></div><button id="ssync" class="hsens" hidden></button></header>
 <main id="view"></main>
 <nav>
   <button data-tab="todo" class="on">할 일</button>
@@ -107,9 +108,9 @@ a { color: var(--green); }
 </nav>
 <div class="toast" id="toast"></div>
 
-<script src="online.js?v=36"></script>
-<script src="sensor.js?v=36"></script>
-<script src="sync.js?v=36"></script>
+<script src="online.js?v=37"></script>
+<script src="sensor.js?v=37"></script>
+<script src="sync.js?v=37"></script>
 <script id="seed" type="application/json">{"version": 1, "source": "", "seasons": {"warm": [3, 10], "cold": [11, 2]}, "plants": []}</script>
 <script>
 "use strict";
@@ -574,7 +575,7 @@ function restore(id) {
   toast("되살렸습니다");
 }
 function pruneTrash() { const cut = Date.now() - TRASH_DAYS * 86400000; if (db.trash) db.trash = db.trash.filter(t => t.at > cut); }
-function header() { document.getElementById("today").textContent = `${today()} · ${SEASON_KO[season(today())]} · 식물 ${db.plants.length}그루`; }
+function header() { document.getElementById("today").textContent = `${today()} · ${SEASON_KO[season(today())]} · 식물 ${db.plants.length}그루`; if (typeof sensorBadge === "function") sensorBadge(); }
 function render() {
   header();
   for (const b of document.querySelectorAll("nav button")) b.classList.toggle("on", b.dataset.tab === tab);
@@ -675,7 +676,7 @@ pruneTrash();
 const removed = dedupe(); if (removed) setTimeout(() => toast(`같은 날 중복 기록 ${removed}건을 정리했습니다`), 300);
 save(); render();
 // ---- updates: check on every open/return; when a new version takes over, reload once (not while a plant is open) ----
-const APP_VERSION = "36";
+const APP_VERSION = "37";
 let pendingReload = false;
 if ("serviceWorker" in navigator && (location.protocol === "https:" || ["localhost", "127.0.0.1"].includes(location.hostname))) {
   const hadController = !!navigator.serviceWorker.controller;
