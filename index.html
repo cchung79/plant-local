@@ -49,6 +49,11 @@ h2 { font-size: 15px; color: var(--sub); margin: 18px 0 8px; font-weight: 600; }
 button.badge.amt { border: 0; font: inherit; font-size: 14px; padding: 5px 10px; cursor: pointer; }
 .todayamt { flex: none; display: flex; align-items: center; gap: 4px; font-size: 15px; color: var(--sub); flex-wrap: wrap; justify-content: flex-end; max-width: 52%; }
 .card.done { flex-wrap: wrap; }
+.todayamt:has(.amtbox) { flex-basis: 100%; max-width: 100%; order: 3; margin-top: 8px; justify-content: flex-end; }
+.amtbox.quick { white-space: nowrap; display: flex; align-items: center; justify-content: flex-end; gap: 8px; font-size: 15px; }
+.amtbox.quick .btn { padding: 9px 14px; font-size: 16px; white-space: nowrap; }
+.amtbox [data-q] { background: var(--blue); color: #fff; }
+.btn.ghost { background: var(--bg); color: var(--ink); border: 1px solid var(--line); font-weight: 500; }
 .wparts span { white-space: nowrap; margin-right: 8px; }
 .wparts .badge { font-size: 13px; padding: 1px 6px; }
 .todayamt input { width: 62px; font-size: 17px; padding: 6px 6px; text-align: right; -moz-appearance: textfield; }
@@ -100,7 +105,7 @@ a { color: var(--green); }
 </style>
 </head>
 <body>
-<header><h1 id="title">우리 집 식물 <span class="ver">v38</span></h1><div class="sub" id="today"></div><button id="ssync" class="hsens" hidden></button></header>
+<header><h1 id="title">우리 집 식물 <span class="ver">v39</span></h1><div class="sub" id="today"></div><button id="ssync" class="hsens" hidden></button></header>
 <main id="view"></main>
 <nav>
   <button data-tab="todo" class="on">할 일</button>
@@ -110,9 +115,9 @@ a { color: var(--green); }
 </nav>
 <div class="toast" id="toast"></div>
 
-<script src="online.js?v=38"></script>
-<script src="sensor.js?v=38"></script>
-<script src="sync.js?v=38"></script>
+<script src="online.js?v=39"></script>
+<script src="sensor.js?v=39"></script>
+<script src="sync.js?v=39"></script>
 <script id="seed" type="application/json">{"version": 1, "source": "", "seasons": {"warm": [3, 10], "cold": [11, 2]}, "plants": []}</script>
 <script>
 "use strict";
@@ -628,34 +633,49 @@ function doneRow(p, did, ago = 0) {
         <button class="badge b-water amt" data-addx="${p.id}">+ 추가</button></div>
       <div class="badges">${w ? `<span class="badge b-moist">물 ✓</span>` : ""}${fert.map(l => `<button class="badge b-moist amt" data-amt="${l.id}">비료 ${amountText(l) || ""} ✓</button>`).join("")}</div></div>`;
 }
-// [+ 추가]: how much more was given (today — also when the watering started yesterday)
+// [+ 추가]: one tap on 0.5L or 1L adds that much (today — also when the watering started earlier); tap again to add more; 취소 leaves
+const QUICK = [0.5, 1];
+const quickBox = (label, extra = "") => `<div class="amtbox quick">${label} ${QUICK.map(n => `<button class="btn" data-q="${n}">${n}L</button>`).join("")}${extra}<button class="btn ghost" data-cancel>취소</button></div>`;
 function addExtra(btn) {
   const p = db.plants.find(x => x.id === btn.dataset.addx); if (!p) return;
   const box = btn.closest(".todayamt");
-  box.innerHTML = `<div class="amtbox">추가 <input type="number" inputmode="decimal" step="0.1" min="0" placeholder="L"> L <button class="btn" style="padding:6px 12px">저장</button></div>`;
-  const inp = box.querySelector("input"); inp.focus();
-  box.onclick = e => e.stopPropagation();
-  const done = () => {
-    const n = parseFloat(inp.value); if (!(n > 0)) { render(); return; }
-    db.log.push({ id: uid(), plant: p.id, type: "water", date: today(), extra: true, amount: r2(n) }); save(); render();
-    const w = waterRound(p); toast(`${p.name} 추가 ${r2(n)}L · 합계 ${w ? w.total : r2(n)}L`);
+  box.innerHTML = quickBox("추가");
+  box.onclick = e => {
+    e.stopPropagation();
+    const b = e.target.closest("button"); if (!b) return;
+    if (b.dataset.cancel != null) return render();
+    const n = Number(b.dataset.q);
+    db.log.push({ id: uid(), plant: p.id, type: "water", date: today(), extra: true, amount: n }); save(); render();
+    const w = waterRound(p); toast(`${p.name} 추가 ${n}L · 합계 ${w ? w.total : n}L`);
   };
-  box.querySelector("button").onclick = done; inp.onkeydown = e => { if (e.key === "Enter") done(); };
 }
 function amountText(l) { return l.amount == null || l.amount === "" ? "" : l.type === "water" ? `${l.amount}L` : String(l.amount); }
+// tapping an amount: a 추가 is changed with the same 0.5L / 1L buttons (or 삭제); the first watering and fertilizer are typed; 취소 leaves without saving
 function editAmount(btn) {
   const l = db.log.find(x => x.id === btn.dataset.amt); if (!l) return;
   const card = btn.closest(".card"), water = l.type === "water", box = water ? card.querySelector(".todayamt") : card.querySelector(".badges");
-  box.innerHTML = `<div class="amtbox">${water ? (l.extra ? "추가" : "물") : "비료"} <input ${water ? 'type="number" inputmode="decimal" step="0.1" min="0"' : 'type="text" placeholder="예: 2mL"'} value="${esc(l.amount ?? "")}">${water ? " L" : ""} <button class="btn" style="padding:6px 12px">저장</button></div>`;
-  const inp = box.querySelector("input"); inp.focus(); inp.select?.();
   box.onclick = e => e.stopPropagation();
+  if (water && l.extra) {
+    box.innerHTML = quickBox(`+${amountText(l)} →`, `<button class="btn ghost" data-del>삭제</button>`);
+    box.onclick = e => {
+      e.stopPropagation();
+      const b = e.target.closest("button"); if (!b) return;
+      if (b.dataset.cancel != null) return render();
+      if (b.dataset.del != null) { db.log = db.log.filter(x => x !== l); save(); render(); return toast("추가 관수를 지웠습니다"); }
+      l.amount = Number(b.dataset.q); save(); render(); toast(`추가 ${l.amount}L로 바꿨습니다`);
+    };
+    return;
+  }
+  box.innerHTML = `<div class="amtbox">${water ? "물" : "비료"} <input ${water ? 'type="number" inputmode="decimal" step="0.1" min="0"' : 'type="text" placeholder="예: 2mL"'} value="${esc(l.amount ?? "")}">${water ? " L" : ""} <button class="btn" data-save style="padding:6px 12px">저장</button><button class="btn ghost" data-cancel style="padding:6px 12px">취소</button></div>`;
+  const inp = box.querySelector("input"); inp.focus(); inp.select?.();
   const done = () => {
     const v = inp.value.trim();
-    if (water) { const n = parseFloat(v); if (n > 0) l.amount = Math.round(n * 100) / 100; else if (l.extra) { db.log = db.log.filter(x => x !== l); save(); render(); toast("추가 관수를 지웠습니다"); return; } else delete l.amount; }
+    if (water) { const n = parseFloat(v); if (n > 0) l.amount = Math.round(n * 100) / 100; else delete l.amount; }
     else if (v) l.amount = v; else delete l.amount;
     save(); render(); toast(`${water ? "물" : "비료"} ${amountText(l) || "양 지움"} 기록했습니다`);
   };
-  box.querySelector("button").onclick = done; inp.onkeydown = e => { if (e.key === "Enter") done(); };
+  box.querySelector("[data-save]").onclick = done; box.querySelector("[data-cancel]").onclick = () => render();
+  inp.onkeydown = e => { if (e.key === "Enter") done(); if (e.key === "Escape") render(); };
 }
 // coming back to the app refreshes the lists (dates move on); never redraw a screen with a photo/file picker in use
 document.addEventListener("visibilitychange", () => {
@@ -694,7 +714,7 @@ pruneTrash();
 const removed = dedupe(); if (removed) setTimeout(() => toast(`같은 날 중복 기록 ${removed}건을 정리했습니다`), 300);
 save(); render();
 // ---- updates: check on every open/return; when a new version takes over, reload once (not while a plant is open) ----
-const APP_VERSION = "38";
+const APP_VERSION = "39";
 let pendingReload = false;
 if ("serviceWorker" in navigator && (location.protocol === "https:" || ["localhost", "127.0.0.1"].includes(location.hostname))) {
   const hadController = !!navigator.serviceWorker.controller;
