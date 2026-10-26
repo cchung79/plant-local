@@ -53,6 +53,7 @@ button.badge.amt { border: 0; font: inherit; font-size: 14px; padding: 5px 10px;
 .amtbox.quick { white-space: nowrap; display: flex; align-items: center; justify-content: flex-end; gap: 8px; font-size: 15px; }
 .amtbox.quick .btn { padding: 9px 14px; font-size: 16px; white-space: nowrap; }
 .amtbox [data-q] { background: var(--blue); color: #fff; }
+.amtbox [data-finish] { background: var(--green); color: #fff; }
 .btn.ghost { background: var(--bg); color: var(--ink); border: 1px solid var(--line); font-weight: 500; }
 .wparts span { white-space: nowrap; margin-right: 8px; }
 .wparts .badge { font-size: 13px; padding: 1px 6px; }
@@ -105,7 +106,7 @@ a { color: var(--green); }
 </style>
 </head>
 <body>
-<header><h1 id="title">우리 집 식물 <span class="ver">v39</span></h1><div class="sub" id="today"></div><button id="ssync" class="hsens" hidden></button></header>
+<header><h1 id="title">우리 집 식물 <span class="ver">v40</span></h1><div class="sub" id="today"></div><button id="ssync" class="hsens" hidden></button></header>
 <main id="view"></main>
 <nav>
   <button data-tab="todo" class="on">할 일</button>
@@ -115,9 +116,9 @@ a { color: var(--green); }
 </nav>
 <div class="toast" id="toast"></div>
 
-<script src="online.js?v=39"></script>
-<script src="sensor.js?v=39"></script>
-<script src="sync.js?v=39"></script>
+<script src="online.js?v=40"></script>
+<script src="sensor.js?v=40"></script>
+<script src="sync.js?v=40"></script>
 <script id="seed" type="application/json">{"version": 1, "source": "", "seasons": {"warm": [3, 10], "cold": [11, 2]}, "plants": []}</script>
 <script>
 "use strict";
@@ -218,11 +219,14 @@ let tab = "todo";
 const view = document.getElementById("view");
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 
+function moistBadge(p) {
+  const m = lastMoist(p); if (!m) return "";
+  return m.value <= p.moistureMin ? ` <span class="badge b-late">흙 마름 ${m.value}%</span>` : ` <span class="badge b-moist">수분 ${m.value}%</span>`;
+}
 function plantRow(p) {
-  const m = lastMoist(p);
   return `<div class="card plant" data-open="${p.id}">
     ${p.photo ? `<img src="${p.photo}" alt="" style="width:44px;height:44px;object-fit:cover;border-radius:10px;flex:none">` : ""}
-    <div class="main"><div class="name">${esc(p.name)}</div><div class="loc">${esc(p.location)}${p.waterL ? ` · 💧${p.waterL}L` : ""}${m ? (m.value <= p.moistureMin ? ` <span class="badge b-late">흙 마름 ${m.value}%</span>` : ` <span class="badge b-moist">수분 ${m.value}%</span>`) : ""}</div></div>
+    <div class="main"><div class="name">${esc(p.name)}</div><div class="loc">${esc(p.location)}${p.waterL ? ` · 💧${p.waterL}L` : ""}${moistBadge(p)}</div></div>
     <div class="badges">${badge(p, "water")}${badge(p, "fert")}</div></div>`;
 }
 function renderTodo() {
@@ -232,14 +236,18 @@ function renderTodo() {
   }
   // 오늘 할 일 = due today or overdue by 정철 님's own schedule (dry soil is shown as a badge, it does not move a plant here)
   // 오늘 한 일 = watered or fed today;  다음 일정 = from tomorrow on, one heading per day
-  // a plant stays under the last day it was watered/fed (오늘·어제·그제), so a watering with 추가 관수 shows its total for 3 days
+  // a plant stays under the last day it was watered/fed (오늘·어제·그제), so a watering with 추가 관수 shows its total for 3 days —
+  // unless it was marked 완료: then it stays only today (어제·그제 keep only the unfinished ones)
   const now = [], next = new Map(), unknown = [], doneBy = [[], [], []];
   for (const p of db.plants) {
     const ds = ["water", "fert"].map(k => due(p, k)).filter(d => !d.none);
     if (ds.some(d => d.unknown)) unknown.push(p);
     const lastDid = logsOf(p.id).find(l => (l.type === "water" || l.type === "fert") && l.date <= today());
     const ago = lastDid ? diff(lastDid.date, today()) : 9;
-    if (ago >= 0 && ago <= 2) doneBy[ago].push([p, logsOf(p.id).filter(l => (l.type === "water" || l.type === "fert") && l.date === lastDid.date)]);
+    if (ago >= 0 && ago <= 2) {
+      const did = logsOf(p.id).filter(l => (l.type === "water" || l.type === "fert") && l.date === lastDid.date);
+      if (ago === 0 || !isFinished(p, did)) doneBy[ago].push([p, did]);
+    }
     const min = Math.min(...ds.filter(d => !d.unknown).map(d => d.days));
     if (min <= 0) now.push([min, p]);
     else if (isFinite(min)) { const day = addDays(today(), min); if (!next.has(day)) next.set(day, []); next.get(day).push(p); }
@@ -593,6 +601,7 @@ document.querySelector("nav").onclick = e => { const t = e.target.dataset.tab; i
 view.onclick = e => {
   if (e.target.closest(".todayamt input, .amtbox")) return;      // typing litres must not open the plant
   const x = e.target.closest("[data-addx]"); if (x) return addExtra(x);
+  const f = e.target.closest("[data-fin]"); if (f) { const p = db.plants.find(q => q.id === f.dataset.fin); return p && setFinished(p, didOf(p), false); }
   const a = e.target.closest("[data-amt]"); if (a) return editAmount(a);
   const c = e.target.closest("[data-open]"); if (c) openPlant(c.dataset.open);
 };
@@ -618,8 +627,18 @@ function waterRound(p) {
   const base = main ? Number(main.amount ?? p.waterL) || 0 : 0, plus = extras.reduce((a, l) => a + (Number(l.amount) || 0), 0);
   return { main, extras, plus: r2(plus), total: r2(base + plus) };
 }
+// 완료: every log of the round carries done:true; a newer log without it (another 추가, a new watering) opens it again
+const roundLogs = (p, did) => { const w = waterRound(p); return [...new Set([...did, ...(w ? [w.main, ...w.extras].filter(Boolean) : [])])]; };
+function isFinished(p, did) {
+  const ls = roundLogs(p, did); if (!ls.length) return false;
+  return ls.every(l => l.done);
+}
+function setFinished(p, did, on) {
+  for (const l of roundLogs(p, did)) { if (on) l.done = true; else delete l.done; }
+  save(); render(); toast(on ? `${p.name} 완료 — 내일부터 목록에서 빠집니다` : `${p.name} 완료를 풀었습니다`);
+}
 function doneRow(p, did, ago = 0) {
-  const w = waterRound(p), fert = did.filter(l => l.type === "fert");
+  const w = waterRound(p), fert = did.filter(l => l.type === "fert"), fin = isFinished(p, did);
   let parts = "";
   if (w && w.extras.length) {
     const days = new Map();
@@ -628,26 +647,33 @@ function doneRow(p, did, ago = 0) {
     parts = [...days].map(([d, xs]) => `<span>${md(d)} ${xs.join(" ")}</span>`).join(" ");
   }
   return `<div class="card plant done" data-when="${["t", "y", "2"][ago]}" data-open="${p.id}">
-      <div class="main"><div class="name">${esc(p.name)}</div><div class="loc">${esc(p.location)}</div>${parts ? `<div class="loc wparts">${parts}</div>` : ""}</div>
+      <div class="main"><div class="name">${esc(p.name)}</div><div class="loc">${esc(p.location)}${moistBadge(p)}</div>${parts ? `<div class="loc wparts">${parts}</div>` : ""}</div>
       <div class="todayamt">${w ? (w.main ? `💧<input type="number" inputmode="decimal" step="0.1" min="0" data-wl="${w.main.id}" data-plus="${w.plus}" value="${w.main.amount != null || w.plus ? w.total : ""}" placeholder="${p.waterL ?? "—"}">L` : `💧${w.total}L`) : ""}
-        <button class="badge b-water amt" data-addx="${p.id}">+ 추가</button></div>
+        ${fin ? `<button class="badge b-moist amt" data-fin="${p.id}" data-ago="${ago}">완료 ✓</button>` : `<button class="badge b-water amt" data-addx="${p.id}" data-ago="${ago}">+ 추가</button>`}</div>
       <div class="badges">${w ? `<span class="badge b-moist">물 ✓</span>` : ""}${fert.map(l => `<button class="badge b-moist amt" data-amt="${l.id}">비료 ${amountText(l) || ""} ✓</button>`).join("")}</div></div>`;
 }
-// [+ 추가]: one tap on 0.5L or 1L adds that much (today — also when the watering started earlier); tap again to add more; 취소 leaves
+// [+ 추가]: one tap on 0.5L or 1L adds that much (today — also when the watering started earlier); tap again to add more;
+// 완료 closes the watering (it leaves 어제·그제 한 일); 취소 leaves
 const QUICK = [0.5, 1];
 const quickBox = (label, extra = "") => `<div class="amtbox quick">${label} ${QUICK.map(n => `<button class="btn" data-q="${n}">${n}L</button>`).join("")}${extra}<button class="btn ghost" data-cancel>취소</button></div>`;
 function addExtra(btn) {
   const p = db.plants.find(x => x.id === btn.dataset.addx); if (!p) return;
   const box = btn.closest(".todayamt");
-  box.innerHTML = quickBox("추가");
+  box.innerHTML = quickBox("추가", `<button class="btn" data-finish>완료</button>`);
   box.onclick = e => {
     e.stopPropagation();
     const b = e.target.closest("button"); if (!b) return;
     if (b.dataset.cancel != null) return render();
+    if (b.dataset.finish != null) return setFinished(p, didOf(p), true);
     const n = Number(b.dataset.q);
     db.log.push({ id: uid(), plant: p.id, type: "water", date: today(), extra: true, amount: n }); save(); render();
     const w = waterRound(p); toast(`${p.name} 추가 ${n}L · 합계 ${w ? w.total : n}L`);
   };
+}
+// the water/fertilizer logs of the last day something was given (what the 한 일 row shows)
+function didOf(p) {
+  const last = logsOf(p.id).find(l => (l.type === "water" || l.type === "fert") && l.date <= today());
+  return last ? logsOf(p.id).filter(l => (l.type === "water" || l.type === "fert") && l.date === last.date) : [];
 }
 function amountText(l) { return l.amount == null || l.amount === "" ? "" : l.type === "water" ? `${l.amount}L` : String(l.amount); }
 // tapping an amount: a 추가 is changed with the same 0.5L / 1L buttons (or 삭제); the first watering and fertilizer are typed; 취소 leaves without saving
@@ -714,7 +740,7 @@ pruneTrash();
 const removed = dedupe(); if (removed) setTimeout(() => toast(`같은 날 중복 기록 ${removed}건을 정리했습니다`), 300);
 save(); render();
 // ---- updates: check on every open/return; when a new version takes over, reload once (not while a plant is open) ----
-const APP_VERSION = "39";
+const APP_VERSION = "40";
 let pendingReload = false;
 if ("serviceWorker" in navigator && (location.protocol === "https:" || ["localhost", "127.0.0.1"].includes(location.hostname))) {
   const hadController = !!navigator.serviceWorker.controller;
