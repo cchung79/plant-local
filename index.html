@@ -118,7 +118,7 @@ a { color: var(--green); }
 </style>
 </head>
 <body>
-<header><h1 id="title">우리 집 식물 <span class="ver">v42</span></h1><div class="sub" id="today"></div><button id="ssync" class="hsens" hidden></button></header>
+<header><h1 id="title">우리 집 식물 <span class="ver">v43</span></h1><div class="sub" id="today"></div><button id="ssync" class="hsens" hidden></button></header>
 <main id="view"></main>
 <nav>
   <button data-tab="todo" class="on">할 일</button>
@@ -128,9 +128,9 @@ a { color: var(--green); }
 </nav>
 <div class="toast" id="toast"></div>
 
-<script src="online.js?v=42"></script>
-<script src="sensor.js?v=42"></script>
-<script src="sync.js?v=42"></script>
+<script src="online.js?v=43"></script>
+<script src="sensor.js?v=43"></script>
+<script src="sync.js?v=43"></script>
 <script id="seed" type="application/json">{"version": 1, "source": "", "seasons": {"warm": [3, 10], "cold": [11, 2]}, "plants": []}</script>
 <script>
 "use strict";
@@ -241,18 +241,18 @@ function plantRow(p) {
     <div class="main"><div class="name">${esc(p.name)}</div><div class="loc">${esc(p.location)}${p.waterL ? ` · 💧${p.waterL}L` : ""}${moistBadge(p)}</div></div>
     <div class="badges">${badge(p, "water")}${badge(p, "fert")}</div></div>`;
 }
-// 오늘 할 일 card: between the name and each badge, the last date it was given and the interval ("10/18 · 7일마다"),
+// 오늘 할 일 and 다음 일정 cards: between the name and each badge, the last date it was given and the interval ("10/18 · 7일마다"),
 // and under them [미룸] — opens 2일 / 5일 / 7일 / 취소 in the card (from today; the card moves to 다음 일정)
 function prevText(p, kind) {
   const l = last(p.id, kind), iv = interval(p, kind);
   return `${l ? md(l.date) : "기록 없음"}${iv ? ` · ${iv}일마다` : ""}`;
 }
-function todayRow(p) {
+function todayRow(p, canSnooze = true) {   // canSnooze=false: 다음 일정 — the dates only
   const kinds = ["water", "fert"].filter(k => !due(p, k).none);
   const cells = kinds.map((k, i) => `<div class="pv" style="grid-row:${i + 1}">${prevText(p, k)}</div><div class="bd" style="grid-row:${i + 1}">${badge(p, k)}</div>`).join("");
   return `<div class="card plant tcard" data-open="${p.id}">
-    <div class="main" style="grid-row:1 / ${kinds.length + 2}">${p.photo ? `<img src="${p.photo}" alt="">` : ""}<div><div class="name">${esc(p.name)}</div><div class="loc">${esc(p.location)}${p.waterL ? ` · <span class="nw">💧${p.waterL}L</span>` : ""}${moistBadge(p)}</div></div></div>
-    ${cells}<div class="pv" style="grid-row:${kinds.length + 1}"><button class="btn ghost snz" data-snz="${p.id}">미룸</button></div></div>`;
+    <div class="main" style="grid-row:1 / ${kinds.length + (canSnooze ? 2 : 1)}">${p.photo ? `<img src="${p.photo}" alt="">` : ""}<div><div class="name">${esc(p.name)}</div><div class="loc">${esc(p.location)}${p.waterL ? ` · <span class="nw">💧${p.waterL}L</span>` : ""}${moistBadge(p)}</div></div></div>
+    ${cells}${canSnooze ? `<div class="pv" style="grid-row:${kinds.length + 1}"><button class="btn ghost snz" data-snz="${p.id}">미룸</button></div>` : ""}</div>`;
 }
 const SNOOZE = [2, 5, 7];
 function openSnooze(btn) {
@@ -309,7 +309,7 @@ function renderTodo() {
     [1, 2].map(n => doneBy[n].length ? `<h2>${n === 1 ? "어제" : "그제"} 한 일 · ${md(addDays(today(), -n))}</h2>` + doneBy[n].map(([p, did]) => doneRow(p, did, n)).join("") : "").join("") +
     (unknown.length ? `<h2>마지막 기록이 없음 — 물 준 날을 넣어 주세요</h2>${unknown.map(plantRow).join("")}` : "") +
     `<h2 style="font-size:17px;color:var(--ink);margin-top:28px">다음 일정</h2>` +
-    [...next.keys()].sort().map(d => `<h2>${dayHead(d)}</h2>${next.get(d).map(plantRow).join("")}`).join("");
+    [...next.keys()].sort().map(d => `<h2>${dayHead(d)}</h2>${next.get(d).map(p => todayRow(p, false)).join("")}`).join("");
   bindSensorTop();
 }
 function renderPlants() {
@@ -786,7 +786,7 @@ pruneTrash();
 const removed = dedupe(); if (removed) setTimeout(() => toast(`같은 날 중복 기록 ${removed}건을 정리했습니다`), 300);
 save(); render();
 // ---- updates: check on every open/return; when a new version takes over, reload once (not while a plant is open) ----
-const APP_VERSION = "42";
+const APP_VERSION = "43";
 let pendingReload = false;
 if ("serviceWorker" in navigator && (location.protocol === "https:" || ["localhost", "127.0.0.1"].includes(location.hostname))) {
   const hadController = !!navigator.serviceWorker.controller;
