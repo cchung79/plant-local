@@ -56,6 +56,18 @@ button.badge.amt { border: 0; font: inherit; font-size: 14px; padding: 5px 10px;
 .amtbox [data-finish] { background: var(--green); color: #fff; }
 .btn.ghost { background: var(--bg); color: var(--ink); border: 1px solid var(--line); font-weight: 500; }
 .wparts span { white-space: nowrap; margin-right: 8px; }
+/* 오늘 할 일: name | last date · interval | badge, one row per schedule; [미룸] under the dates */
+.tcard { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; column-gap: 8px; row-gap: 4px; align-items: center; }
+.tcard .main { grid-column: 1; display: flex; align-items: center; gap: 10px; min-width: 0; }
+.tcard .main img { width: 44px; height: 44px; object-fit: cover; border-radius: 10px; flex: none; }
+.tcard .main > div { min-width: 0; }
+.tcard .name { word-break: keep-all; }
+.nw { white-space: nowrap; }
+.tcard .pv { grid-column: 2; font-size: 12px; color: var(--sub); white-space: nowrap; justify-self: end; }
+.tcard .bd { grid-column: 3; justify-self: end; }
+.tcard .snz { padding: 2px 12px; font-size: 13px; border-radius: 999px; }
+.tcard .snzbox { grid-column: 1 / -1; margin-top: 6px; }
+.amtbox [data-sd] { background: var(--blue); color: #fff; }
 .wparts .badge { font-size: 13px; padding: 1px 6px; }
 .todayamt input { width: 62px; font-size: 17px; padding: 6px 6px; text-align: right; -moz-appearance: textfield; }
 .todayamt input::-webkit-inner-spin-button, .todayamt input::-webkit-outer-spin-button, .amts input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
@@ -106,7 +118,7 @@ a { color: var(--green); }
 </style>
 </head>
 <body>
-<header><h1 id="title">우리 집 식물 <span class="ver">v41</span></h1><div class="sub" id="today"></div><button id="ssync" class="hsens" hidden></button></header>
+<header><h1 id="title">우리 집 식물 <span class="ver">v42</span></h1><div class="sub" id="today"></div><button id="ssync" class="hsens" hidden></button></header>
 <main id="view"></main>
 <nav>
   <button data-tab="todo" class="on">할 일</button>
@@ -116,9 +128,9 @@ a { color: var(--green); }
 </nav>
 <div class="toast" id="toast"></div>
 
-<script src="online.js?v=41"></script>
-<script src="sensor.js?v=41"></script>
-<script src="sync.js?v=41"></script>
+<script src="online.js?v=42"></script>
+<script src="sensor.js?v=42"></script>
+<script src="sync.js?v=42"></script>
 <script id="seed" type="application/json">{"version": 1, "source": "", "seasons": {"warm": [3, 10], "cold": [11, 2]}, "plants": []}</script>
 <script>
 "use strict";
@@ -229,6 +241,38 @@ function plantRow(p) {
     <div class="main"><div class="name">${esc(p.name)}</div><div class="loc">${esc(p.location)}${p.waterL ? ` · 💧${p.waterL}L` : ""}${moistBadge(p)}</div></div>
     <div class="badges">${badge(p, "water")}${badge(p, "fert")}</div></div>`;
 }
+// 오늘 할 일 card: between the name and each badge, the last date it was given and the interval ("10/18 · 7일마다"),
+// and under them [미룸] — opens 2일 / 5일 / 7일 / 취소 in the card (from today; the card moves to 다음 일정)
+function prevText(p, kind) {
+  const l = last(p.id, kind), iv = interval(p, kind);
+  return `${l ? md(l.date) : "기록 없음"}${iv ? ` · ${iv}일마다` : ""}`;
+}
+function todayRow(p) {
+  const kinds = ["water", "fert"].filter(k => !due(p, k).none);
+  const cells = kinds.map((k, i) => `<div class="pv" style="grid-row:${i + 1}">${prevText(p, k)}</div><div class="bd" style="grid-row:${i + 1}">${badge(p, k)}</div>`).join("");
+  return `<div class="card plant tcard" data-open="${p.id}">
+    <div class="main" style="grid-row:1 / ${kinds.length + 2}">${p.photo ? `<img src="${p.photo}" alt="">` : ""}<div><div class="name">${esc(p.name)}</div><div class="loc">${esc(p.location)}${p.waterL ? ` · <span class="nw">💧${p.waterL}L</span>` : ""}${moistBadge(p)}</div></div></div>
+    ${cells}<div class="pv" style="grid-row:${kinds.length + 1}"><button class="btn ghost snz" data-snz="${p.id}">미룸</button></div></div>`;
+}
+const SNOOZE = [2, 5, 7];
+function openSnooze(btn) {
+  const card = btn.closest(".card"), p = db.plants.find(x => x.id === btn.dataset.snz); if (!p) return;
+  card.querySelector(".snzbox")?.remove(); btn.style.visibility = "hidden";
+  card.insertAdjacentHTML("beforeend", `<div class="amtbox quick snzbox">미룸 ${SNOOZE.map(n => `<button class="btn" data-sd="${n}">${n}일</button>`).join("")}<button class="btn ghost" data-cancel>취소</button></div>`);
+  card.querySelector(".snzbox").onclick = e => {
+    e.stopPropagation();
+    const b = e.target.closest("button"); if (!b) return;
+    if (b.dataset.cancel != null) return render();
+    snooze(p, Number(b.dataset.sd));
+  };
+}
+// fertilizer only falls due together with water (due()), so moving water moves both; a plant with no water schedule moves its fertilizer
+function snooze(p, n) {
+  const until = addDays(today(), n), kind = due(p, "water").none ? "fert" : "water";
+  const l = { id: uid(), plant: p.id, type: "snooze", kind, date: today(), until };
+  db.log.push(l); save(); render();
+  toast(`${p.name} ${kind === "water" ? "물" : "비료"}을 ${md(until)}로 미뤘습니다`, { label: "되돌리기", run: () => { db.log = db.log.filter(x => x !== l); save(); render(); } });
+}
 function renderTodo() {
   if (!db.plants.length) {
     view.innerHTML = `<div class="card" style="margin-top:12px"><b>식물이 아직 없습니다</b><p class="small">처음 데이터 파일(식물_시작데이터_*.json)을 이 폰에 받은 뒤, <b>설정 → 가져오기</b>로 넣으세요. 식물을 하나씩 직접 추가해도 됩니다(식물 탭).</p></div>`;
@@ -260,7 +304,7 @@ function renderTodo() {
   view.innerHTML =
     sensorTopHtml() +
     `<h2 style="font-size:17px;color:var(--ink)">오늘 할 일 · ${md(today())} (${wd(today())})${now.length ? ` · ${now.length}그루` : ""}</h2>` +
-    (now.length ? now.map(x => plantRow(x[1])).join("") : `<div class="empty">${done.length || finishedToday ? "오늘 할 일을 다 했습니다" : "오늘은 할 일이 없습니다"}</div>`) +
+    (now.length ? now.map(x => todayRow(x[1])).join("") : `<div class="empty">${done.length || finishedToday ? "오늘 할 일을 다 했습니다" : "오늘은 할 일이 없습니다"}</div>`) +
     (done.length ? `<h2 style="font-size:17px;color:var(--ink)">오늘 한 일 · ${done.length}그루</h2>` + done.map(([p, did]) => doneRow(p, did, 0)).join("") : "") +
     [1, 2].map(n => doneBy[n].length ? `<h2>${n === 1 ? "어제" : "그제"} 한 일 · ${md(addDays(today(), -n))}</h2>` + doneBy[n].map(([p, did]) => doneRow(p, did, n)).join("") : "").join("") +
     (unknown.length ? `<h2>마지막 기록이 없음 — 물 준 날을 넣어 주세요</h2>${unknown.map(plantRow).join("")}` : "") +
@@ -601,6 +645,7 @@ function render() {
 document.querySelector("nav").onclick = e => { const t = e.target.dataset.tab; if (t) { tab = t; settingsSub = null; sheet?.remove(); sheet = null; document.body.classList.remove("locked"); render(); window.scrollTo(0, 0); } };
 view.onclick = e => {
   if (e.target.closest(".todayamt input, .amtbox")) return;      // typing litres must not open the plant
+  const z = e.target.closest("[data-snz]"); if (z) return openSnooze(z);
   const x = e.target.closest("[data-addx]"); if (x) return addExtra(x);
   const a = e.target.closest("[data-amt]"); if (a) return editAmount(a);
   const c = e.target.closest("[data-open]"); if (c) openPlant(c.dataset.open);
@@ -741,7 +786,7 @@ pruneTrash();
 const removed = dedupe(); if (removed) setTimeout(() => toast(`같은 날 중복 기록 ${removed}건을 정리했습니다`), 300);
 save(); render();
 // ---- updates: check on every open/return; when a new version takes over, reload once (not while a plant is open) ----
-const APP_VERSION = "41";
+const APP_VERSION = "42";
 let pendingReload = false;
 if ("serviceWorker" in navigator && (location.protocol === "https:" || ["localhost", "127.0.0.1"].includes(location.hostname))) {
   const hadController = !!navigator.serviceWorker.controller;
