@@ -122,7 +122,7 @@ a { color: var(--green); }
 </style>
 </head>
 <body>
-<header><h1 id="title">우리 집 식물 <span class="ver">v44</span></h1><div class="sub" id="today"></div><button id="ssync" class="hsens" hidden></button></header>
+<header><h1 id="title">우리 집 식물 <span class="ver">v45</span></h1><div class="sub" id="today"></div><button id="ssync" class="hsens" hidden></button></header>
 <main id="view"></main>
 <nav>
   <button data-tab="todo" class="on">할 일</button>
@@ -132,9 +132,9 @@ a { color: var(--green); }
 </nav>
 <div class="toast" id="toast"></div>
 
-<script src="online.js?v=44"></script>
-<script src="sensor.js?v=44"></script>
-<script src="sync.js?v=44"></script>
+<script src="online.js?v=45"></script>
+<script src="sensor.js?v=45"></script>
+<script src="sync.js?v=45"></script>
 <script id="seed" type="application/json">{"version": 1, "source": "", "seasons": {"warm": [3, 10], "cold": [11, 2]}, "plants": []}</script>
 <script>
 "use strict";
@@ -260,7 +260,7 @@ function dueText(d) {
 function badge(p, kind) {
   const d = due(p, kind); if (d.none) return "";
   const late = d.unknown ? false : d.days <= 0;
-  return `<span class="badge ${late ? "b-late" : kind === "water" ? "b-water" : "b-fert"}">${kind === "water" ? "물" : "비료"} ${d.withWater ? "물과 같이" : d.rest ? md(d.date) : dueText(d)}</span>`;
+  return `<span class="badge ${late ? "b-late" : kind === "water" ? "b-water" : "b-fert"}">${kind === "water" ? "물" : "비료"} ${d.withWater ? "물과 같이" : d.rest ? "겨울 쉼" : dueText(d)}</span>`;
 }
 
 // ---- views ----
@@ -834,7 +834,7 @@ pruneTrash();
 const removed = dedupe(); if (removed) setTimeout(() => toast(`같은 날 중복 기록 ${removed}건을 정리했습니다`), 300);
 save(); render();
 // ---- updates: check on every open/return; when a new version takes over, reload once (not while a plant is open) ----
-const APP_VERSION = "44";
+const APP_VERSION = "45";
 let pendingReload = false;
 if ("serviceWorker" in navigator && (location.protocol === "https:" || ["localhost", "127.0.0.1"].includes(location.hostname))) {
   const hadController = !!navigator.serviceWorker.controller;
