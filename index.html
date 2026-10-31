@@ -122,7 +122,7 @@ a { color: var(--green); }
 </style>
 </head>
 <body>
-<header><h1 id="title">우리 집 식물 <span class="ver">v46</span></h1><div class="sub" id="today"></div><button id="ssync" class="hsens" hidden></button></header>
+<header><h1 id="title">우리 집 식물 <span class="ver">v47</span></h1><div class="sub" id="today"></div><button id="ssync" class="hsens" hidden></button></header>
 <main id="view"></main>
 <nav>
   <button data-tab="todo" class="on">할 일</button>
@@ -132,9 +132,9 @@ a { color: var(--green); }
 </nav>
 <div class="toast" id="toast"></div>
 
-<script src="online.js?v=46"></script>
-<script src="sensor.js?v=46"></script>
-<script src="sync.js?v=46"></script>
+<script src="online.js?v=47"></script>
+<script src="sensor.js?v=47"></script>
+<script src="sync.js?v=47"></script>
 <script id="seed" type="application/json">{"version": 1, "source": "", "seasons": {"warm": [3, 10], "cold": [11, 2]}, "plants": []}</script>
 <script>
 "use strict";
@@ -193,6 +193,9 @@ function monthsText(k) { const [a, b] = db.seasons[k]; return `${a}~${b}월`; }
 const logsOf = (pid, type) => db.log.map((l, i) => [l, i]).filter(([l]) => l.plant === pid && (!type || l.type === type))
   .sort(([a, i], [b, j]) => a.date < b.date ? 1 : a.date > b.date ? -1 : (b.sensorT || 0) - (a.sensorT || 0) || j - i).map(([l]) => l);
 const last = (pid, type) => logsOf(pid, type).find(l => !l.extra) || null;     // 추가 관수 does not move the next date
+// the season of the last watering (or feeding) sets this round's interval: when the season changes,
+// the round already started ends on the old interval and the new one starts from the next watering
+const roundInterval = (p, kind, l) => (l && p[kind][season(l.date)]) || interval(p, kind);
 function interval(p, kind) {
   const s = season(today());
   if (kind === "fert" && !p.fert.on) return null;
@@ -236,7 +239,7 @@ function due(p, kind) {               // {date, days} or {none:true} / {unknown:
   if (!iv) return { none: true };
   const l = last(p.id, kind);
   if (!l) return { unknown: true };
-  let date = addDays(l.date, iv);
+  let date = addDays(l.date, roundInterval(p, kind, l));
   const sn = logsOf(p.id, "snooze").find(x => x.kind === kind && x.date >= l.date);
   if (sn && sn.until > date) date = sn.until;
   if (kind === "fert") {
@@ -282,7 +285,7 @@ function plantRow(p) {
 // 오늘 할 일 and 다음 일정 cards: between the name and each badge, the last date it was given and the interval ("10/18 · 7일마다"),
 // and under them [미룸] — opens 2일 / 5일 / 7일 / 취소 in the card (from today; the card moves to 다음 일정)
 function prevText(p, kind) {
-  const l = last(p.id, kind), iv = interval(p, kind);
+  const l = last(p.id, kind), iv = roundInterval(p, kind, l);
   return `${l ? md(l.date) : "기록 없음"}${kind === "fert" && fertByWater(p) ? ` · 물 ${fertEvery(p)}번에 1번` : iv ? ` · ${iv}일마다` : ""}`;
 }
 function todayRow(p, canSnooze = true) {   // canSnooze=false: 다음 일정 — the dates only
@@ -835,7 +838,7 @@ pruneTrash();
 const removed = dedupe(); if (removed) setTimeout(() => toast(`같은 날 중복 기록 ${removed}건을 정리했습니다`), 300);
 save(); render();
 // ---- updates: check on every open/return; when a new version takes over, reload once (not while a plant is open) ----
-const APP_VERSION = "46";
+const APP_VERSION = "47";
 let pendingReload = false;
 if ("serviceWorker" in navigator && (location.protocol === "https:" || ["localhost", "127.0.0.1"].includes(location.hostname))) {
   const hadController = !!navigator.serviceWorker.controller;
