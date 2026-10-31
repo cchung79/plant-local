@@ -96,6 +96,10 @@ select { -webkit-appearance: none; appearance: none; background-color: var(--bg)
 h1 .ver { font-size: 13px; font-weight: 400; color: var(--sub); vertical-align: 3px; }
 .field label { font-size: 15px; }
 .field .hint { color: var(--sub); font-size: 12px; display: block; }
+.field.fseg { grid-template-columns: 1fr; }
+.seg { display: flex; gap: 6px; }
+.seg button { flex: 1; padding: 9px 0; border: 1px solid var(--line); border-radius: 10px; background: var(--bg); color: var(--ink); font: inherit; font-size: 15px; cursor: pointer; }
+.seg button.on { background: var(--brown); border-color: var(--brown); color: #fff; font-weight: 700; }
 .unit { display: flex; align-items: center; gap: 6px; }
 .unit span { color: var(--sub); font-size: 14px; white-space: nowrap; }
 body.locked { overflow: hidden; }
@@ -118,7 +122,7 @@ a { color: var(--green); }
 </style>
 </head>
 <body>
-<header><h1 id="title">우리 집 식물 <span class="ver">v43</span></h1><div class="sub" id="today"></div><button id="ssync" class="hsens" hidden></button></header>
+<header><h1 id="title">우리 집 식물 <span class="ver">v44</span></h1><div class="sub" id="today"></div><button id="ssync" class="hsens" hidden></button></header>
 <main id="view"></main>
 <nav>
   <button data-tab="todo" class="on">할 일</button>
@@ -128,9 +132,9 @@ a { color: var(--green); }
 </nav>
 <div class="toast" id="toast"></div>
 
-<script src="online.js?v=43"></script>
-<script src="sensor.js?v=43"></script>
-<script src="sync.js?v=43"></script>
+<script src="online.js?v=44"></script>
+<script src="sensor.js?v=44"></script>
+<script src="sync.js?v=44"></script>
 <script id="seed" type="application/json">{"version": 1, "source": "", "seasons": {"warm": [3, 10], "cold": [11, 2]}, "plants": []}</script>
 <script>
 "use strict";
@@ -194,7 +198,40 @@ function interval(p, kind) {
   if (kind === "fert" && !p.fert.on) return null;
   return p[kind][s] || null;
 }
+// 비료 = every N-th watering (N = 2·3·4, per plant), never in the rest months (default 11~1월, 설정 → 계절)
+const FERT_EVERY = [2, 3, 4];
+const fertOff = () => db.seasons.fertOff || [11, 1];
+const inMonths = (dateStr, [a, b]) => { const m = parse(dateStr).getMonth() + 1; return a <= b ? m >= a && m <= b : m >= a || m <= b; };
+const fertResting = d => inMonths(d, fertOff());
+// a plant set up before this kept "fertilizer every n days": read as the nearest of 2·3·4 waterings until one is chosen (nothing is written)
+function fertEvery(p) {
+  if (p.fert.every) return p.fert.every;
+  const w = p.water.warm || p.water.cold, f = p.fert.warm || p.fert.cold;
+  return w && f ? Math.min(4, Math.max(2, Math.round(f / w))) : 2;
+}
+const fertByWater = p => p.fert.on && !!interval(p, "water");
+const fertText = p => p.fert.on ? `물 ${fertEvery(p)}번에 1번 · ${fertOff()[0]}~${fertOff()[1]}월 쉼` : "안 함";
+// waterings since the last fertilizer are counted (추가 관수 not); the N-th one carries it, pushed past the rest months.
+// later waterings are projected with each date's season interval, counting from today when water is overdue
+function fertDue(p) {
+  const w = due(p, "water");
+  if (w.unknown) return { unknown: true };
+  const lf = last(p.id, "fert"), n = fertEvery(p);
+  // history before the app (PLANTA gave only the last date) is missing, so the days from the last fertilizer to the last watering
+  // also count, in waterings of that season: whichever is more. Never fertilized → with the next watering.
+  const ws = logsOf(p.id, "water").filter(l => !l.extra && l.date <= today() && (!lf || l.date > lf.date)), lw = ws[0];
+  const byDays = lf && lw ? Math.floor(diff(lf.date, lw.date) / (p.water[season(lw.date)] || p.water.warm || p.water.cold || 30)) : 0;
+  const since = lf ? Math.max(ws.length, byDays) : n;
+  const at = d => d < today() ? today() : d;
+  let date = w.date, rest = false;
+  for (let i = 1, k = Math.max(1, n - since); i < 40 && (i < k || fertResting(at(date))); i++) {
+    if (fertResting(at(date))) rest = true;
+    date = addDays(at(date), p.water[season(at(date))] || p.water.warm || p.water.cold || 30);
+  }
+  return { date, days: diff(today(), date), withWater: date === w.date, rest };
+}
 function due(p, kind) {               // {date, days} or {none:true} / {unknown:true}
+  if (kind === "fert" && fertByWater(p)) return fertDue(p);
   const iv = interval(p, kind);
   if (!iv) return { none: true };
   const l = last(p.id, kind);
@@ -223,7 +260,7 @@ function dueText(d) {
 function badge(p, kind) {
   const d = due(p, kind); if (d.none) return "";
   const late = d.unknown ? false : d.days <= 0;
-  return `<span class="badge ${late ? "b-late" : kind === "water" ? "b-water" : "b-fert"}">${kind === "water" ? "물" : "비료"} ${d.withWater ? "물과 같이" : dueText(d)}</span>`;
+  return `<span class="badge ${late ? "b-late" : kind === "water" ? "b-water" : "b-fert"}">${kind === "water" ? "물" : "비료"} ${d.withWater ? "물과 같이" : d.rest ? md(d.date) : dueText(d)}</span>`;
 }
 
 // ---- views ----
@@ -245,7 +282,7 @@ function plantRow(p) {
 // and under them [미룸] — opens 2일 / 5일 / 7일 / 취소 in the card (from today; the card moves to 다음 일정)
 function prevText(p, kind) {
   const l = last(p.id, kind), iv = interval(p, kind);
-  return `${l ? md(l.date) : "기록 없음"}${iv ? ` · ${iv}일마다` : ""}`;
+  return `${l ? md(l.date) : "기록 없음"}${kind === "fert" && fertByWater(p) ? ` · 물 ${fertEvery(p)}번에 1번` : iv ? ` · ${iv}일마다` : ""}`;
 }
 function todayRow(p, canSnooze = true) {   // canSnooze=false: 다음 일정 — the dates only
   const kinds = ["water", "fert"].filter(k => !due(p, k).none);
@@ -353,6 +390,8 @@ function renderSettings() {
     <div class="field"><label>따뜻한 계절 시작 달</label><div class="unit"><input type="number" min="1" max="12" id="ws" value="${db.seasons.warm[0]}"><span>월</span></div></div>
     <div class="field"><label>따뜻한 계절 끝 달</label><div class="unit"><input type="number" min="1" max="12" id="we" value="${db.seasons.warm[1]}"><span>월</span></div></div>
     <div class="small">나머지 달은 추운 계절입니다. 지금은 <b>${SEASON_KO[season(today())]}</b>.</div>
+    <div class="field"><label>비료 쉬는 달 시작</label><div class="unit"><input type="number" min="1" max="12" id="fs" value="${fertOff()[0]}"><span>월</span></div></div>
+    <div class="field"><label>비료 쉬는 달 끝</label><div class="unit"><input type="number" min="1" max="12" id="fe" value="${fertOff()[1]}"><span>월</span></div></div>
   </div>
   <h2>백업 (폰끼리 옮기기)</h2>
   <div class="card">
@@ -374,6 +413,11 @@ function renderSettings() {
       db.seasons.warm = [a, b]; db.seasons.cold = [b % 12 + 1, (a + 10) % 12 + 1]; save(); toast("계절을 바꿨습니다");
     }
   };
+  const setFertOff = () => {
+    const a = +document.getElementById("fs").value, b = +document.getElementById("fe").value;
+    if (a >= 1 && a <= 12 && b >= 1 && b <= 12) { db.seasons.fertOff = [a, b]; save(); toast(`비료는 ${a}~${b}월에 쉽니다`); }
+  };
+  document.getElementById("fs").onchange = setFertOff; document.getElementById("fe").onchange = setFertOff;
   document.getElementById("go-eco").onclick = () => { settingsSub = "eco"; renderSettings(); };
   document.getElementById("go-online").onclick = () => { settingsSub = "online"; renderSettings(); };
   document.getElementById("go-server").onclick = () => { settingsSub = "server"; renderSettings(); };
@@ -426,7 +470,7 @@ function drawPlant(p, isNew) {
     <div class="card" style="margin-top:10px">
       <div class="row2" style="margin-bottom:8px">
         <div><div class="small">물</div><b>${dueText(wd) || "—"}</b><div class="small">${lw ? `마지막 ${md(lw.date)} (${diff(lw.date, today())}일 전) · 아래 기록 기준` : "기록 없음"}</div></div>
-        <div><div class="small">비료</div><b>${fd.none ? (p.fert.on ? "이번 계절 안 함" : "비료 일정 꺼짐") : dueText(fd)}</b>${fd.withWater ? `<div class="small">밀려서 다음 물 줄 때 같이</div>` : ""}<div class="small">${lf ? `마지막 ${md(lf.date)} (${diff(lf.date, today())}일 전)` : "기록 없음"}</div></div>
+        <div><div class="small">비료</div><b>${fd.none ? (p.fert.on ? "이번 계절 안 함" : "비료 일정 꺼짐") : fd.withWater ? "다음 물 줄 때" : fd.rest ? `${md(fd.date)} 물 줄 때` : dueText(fd)}</b>${fertByWater(p) ? `<div class="small">물 ${fertEvery(p)}번에 1번${fd.rest ? ` · ${fertOff()[0]}~${fertOff()[1]}월 쉼` : ""}</div>` : ""}<div class="small">${lf ? `마지막 ${md(lf.date)} (${diff(lf.date, today())}일 전)` : "기록 없음"}</div></div>
       </div>
       <div class="small">흙 수분: ${m ? `<b>${m.value}%</b> (${md(m.date)}) · 기준 ${p.moistureMin}% 이하면 물` : `아직 안 잼 · 기준 ${p.moistureMin}% 이하면 물`}</div>
     </div>
@@ -448,9 +492,8 @@ function drawPlant(p, isNew) {
       <div class="field"><label>물 · 추운 계절<span class="hint">${monthsText("cold")}</span></label><div class="unit"><input type="number" inputmode="numeric" data-k="water.cold" value="${p.water.cold ?? ""}"><span>일</span></div></div>
       <div class="field"><label>1회 용수량</label><div class="unit"><input type="number" inputmode="decimal" step="0.05" min="0" data-k="waterL" value="${p.waterL ?? ""}"><span>L</span></div></div>
       <div class="field"><label>최대 관수 무게</label><div class="unit"><input type="number" inputmode="decimal" step="0.1" min="0" data-k="maxKg" value="${p.maxKg ?? ""}"><span>kg</span></div></div>
-      <div class="toggle"><label for="fon">비료 일정 사용</label><input type="checkbox" id="fon" style="width:auto;transform:scale(1.4)" ${p.fert.on ? "checked" : ""}></div>
-      <div class="field" ${p.fert.on ? "" : 'style="opacity:.4"'}><label>비료 · 따뜻한 계절<span class="hint">비우면 안 함</span></label><div class="unit"><input type="number" inputmode="numeric" data-k="fert.warm" value="${p.fert.warm ?? ""}" ${p.fert.on ? "" : "disabled"}><span>일</span></div></div>
-      <div class="field" ${p.fert.on ? "" : 'style="opacity:.4"'}><label>비료 · 추운 계절<span class="hint">비우면 안 함</span></label><div class="unit"><input type="number" inputmode="numeric" data-k="fert.cold" value="${p.fert.cold ?? ""}" ${p.fert.on ? "" : "disabled"}><span>일</span></div></div>
+      <div class="field fseg"><label>비료 · 물 몇 번에 한 번<span class="hint">${fertOff()[0]}~${fertOff()[1]}월은 쉼</span></label>
+        <div class="seg">${[0, ...FERT_EVERY].map(n => `<button class="${(n ? p.fert.on && fertEvery(p) === n : !p.fert.on) ? "on" : ""}" data-fe="${n}">${n ? n + "번" : "끔"}</button>`).join("")}</div></div>
       <div class="field"><label>물 줄 기준 수분<span class="hint">수분계가 이 값 이하면 물</span></label><div class="unit"><input type="number" inputmode="numeric" min="0" max="100" data-k="moistureMin" value="${p.moistureMin ?? ""}"><span>%</span></div></div>
       ${sensorFieldHtml(p)}
     </div>
@@ -514,7 +557,12 @@ function drawPlant(p, isNew) {
     if (old !== (b ? p[a][b] : p[a])) db.log.push({ id: uid(), plant: p.id, type: "edit", date: today(), note: `${label(inp.dataset.k)} ${unitv(old, inp.dataset.k)} → ${unitv(b ? p[a][b] : p[a], inp.dataset.k)}` });
     save(); drawPlant(p); toast("바꿨습니다");
   };
-  $("fon").onchange = e => { p.fert.on = e.target.checked; db.log.push({ id: uid(), plant: p.id, type: "edit", date: today(), note: `비료 일정 ${p.fert.on ? "켬" : "끔"}` }); save(); drawPlant(p); };
+  for (const b of sheet.querySelectorAll("[data-fe]")) b.onclick = () => {
+    const n = +b.dataset.fe, txt = () => p.fert.on ? `물 ${fertEvery(p)}번에 1번` : "안 함", old = txt();
+    if (n) { p.fert.on = true; p.fert.every = n; } else p.fert.on = false;
+    if (old !== txt()) db.log.push({ id: uid(), plant: p.id, type: "edit", date: today(), note: `비료 ${old} → ${txt()}` });
+    save(); drawPlant(p); toast("바꿨습니다");
+  };
   for (const inp of sheet.querySelectorAll("[data-t]")) inp.onchange = () => { p[inp.dataset.t] = inp.value.trim(); save(); if (inp.dataset.t === "name") drawPlant(p); };
   for (const b of sheet.querySelectorAll("[data-del]")) b.onclick = () => {
     if (!b.classList.contains("sure")) {
@@ -786,7 +834,7 @@ pruneTrash();
 const removed = dedupe(); if (removed) setTimeout(() => toast(`같은 날 중복 기록 ${removed}건을 정리했습니다`), 300);
 save(); render();
 // ---- updates: check on every open/return; when a new version takes over, reload once (not while a plant is open) ----
-const APP_VERSION = "43";
+const APP_VERSION = "44";
 let pendingReload = false;
 if ("serviceWorker" in navigator && (location.protocol === "https:" || ["localhost", "127.0.0.1"].includes(location.hostname))) {
   const hadController = !!navigator.serviceWorker.controller;

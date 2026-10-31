@@ -176,7 +176,7 @@ function plantContext(p) {
   const recent = logsOf(p.id).slice(0, 20).map(l => `${l.date} ${l.type}${l.value != null ? " " + l.value + "%" : ""}${l.note ? " (" + l.note + ")" : ""}`).join("\n");
   return `식물: ${p.name} (${p.species || "학명 모름"})\n위치: ${p.location}\n화분: ${p.pot?.type || "?"} ${p.pot?.cm ? p.pot.cm + "cm" : ""} 흙: ${p.pot?.soil || "?"}\n` +
     `지금 계절: ${SEASON_KO[s]} (따뜻한 계절 ${monthsText("warm")}, 추운 계절 ${monthsText("cold")})\n` +
-    `물 간격: 따뜻 ${p.water.warm ?? "-"}일 / 추운 ${p.water.cold ?? "-"}일, 비료: ${p.fert.on ? `따뜻 ${p.fert.warm ?? "안 함"} / 추운 ${p.fert.cold ?? "안 함"}일` : "안 함"}\n` +
+    `물 간격: 따뜻 ${p.water.warm ?? "-"}일 / 추운 ${p.water.cold ?? "-"}일, 비료: ${fertText(p)}\n` +
     `물 줄 기준 수분: ${p.moistureMin}% (수분계 0~100%)${p.sensorCh ? `, Ecowitt 토양 센서 CH${p.sensorCh} 연결(기록의 "센서" 수분 값)` : ""}\n메모: ${p.note || "-"}\n최근 기록(최신순, 오늘 ${today()}):\n${recent || "없음"}`;
 }
 
@@ -189,6 +189,8 @@ function openAddPlant() {
 }
 function drawAdd(msg) {
   const a = addState, k = keys(), locs = myLocations(), p = a.prop;
+  // 비료: Claude's suggestion (days) read as the nearest of 2·3·4 waterings; a tap is kept across redraws in a.fe
+  const fe0 = a.fe ?? (p?.fert_on ? Math.min(4, Math.max(2, Math.round((p.fert_warm_days || 60) / (p.water_warm_days || 30)))) : 0);
   sheet.innerHTML = `
   <header><button id="back">‹ 취소</button><h1 style="flex:1;font-size:18px;margin:0">식물 추가</h1></header>
   <main>
@@ -218,9 +220,8 @@ function drawAdd(msg) {
       <div class="field"><label>위치</label><input id="lc" list="locs2" value="${esc(a.loc ?? (p?.location || ""))}"><datalist id="locs2">${locs.map(l => `<option value="${esc(l)}">`).join("")}</datalist></div>
       <div class="field"><label>물 · 따뜻한 계절</label><div class="unit"><input type="number" inputmode="numeric" id="ww" value="${p?.water_warm_days ?? 10}"><span>일</span></div></div>
       <div class="field"><label>물 · 추운 계절</label><div class="unit"><input type="number" inputmode="numeric" id="wc" value="${p?.water_cold_days ?? 14}"><span>일</span></div></div>
-      <div class="toggle"><label for="fo">비료 일정 사용</label><input type="checkbox" id="fo" style="width:auto;transform:scale(1.4)" ${p?.fert_on ? "checked" : ""}></div>
-      <div class="field"><label>비료 · 따뜻한 계절<span class="hint">비우면 안 함</span></label><div class="unit"><input type="number" inputmode="numeric" id="fw" value="${p?.fert_warm_days || ""}"><span>일</span></div></div>
-      <div class="field"><label>비료 · 추운 계절<span class="hint">비우면 안 함</span></label><div class="unit"><input type="number" inputmode="numeric" id="fc" value="${p?.fert_cold_days || ""}"><span>일</span></div></div>
+      <div class="field fseg"><label>비료 · 물 몇 번에 한 번<span class="hint">${fertOff()[0]}~${fertOff()[1]}월은 쉼</span></label>
+        <div class="seg" id="fseg">${[0, ...FERT_EVERY].map(n => `<button class="${n === fe0 ? "on" : ""}" data-fe="${n}">${n ? n + "번" : "끔"}</button>`).join("")}</div></div>
       <div class="field"><label>물 줄 기준 수분</label><div class="unit"><input type="number" inputmode="numeric" id="mm" value="${p?.moisture_min_pct ?? 30}"><span>%</span></div></div>
       <div class="unit" style="margin-top:8px"><span>마지막 물 준 날</span><input type="date" id="lw" max="${today()}"></div>
       <button class="btn btn-ghost" id="ask" style="width:100%;margin-top:10px" ${a.species ? "" : "disabled"}>${k.claude ? "Claude에게 일정·위치 제안 받기" : "제안 받기 (Claude 키 필요)"}</button>
@@ -229,6 +230,7 @@ function drawAdd(msg) {
   </main>`;
   const $ = id => sheet.querySelector("#" + id);
   const keep = () => { a.name = $("nm").value; a.loc = $("lc").value; a.species = $("sp").value.trim(); };
+  for (const b of sheet.querySelectorAll("#fseg [data-fe]")) b.onclick = () => { a.fe = +b.dataset.fe; for (const x of sheet.querySelectorAll("#fseg [data-fe]")) x.classList.toggle("on", x === b); };
   $("back").onclick = closeSheet;
   $("ph").onchange = async e => {
     const f = e.target.files[0]; if (!f) return; keep();
@@ -273,7 +275,7 @@ function drawAdd(msg) {
       id: "p" + uid(), name: a.name.trim() || a.species || "새 식물", species: a.species, location: a.loc.trim(),
       pot: { type: "", cm: null, soil: "" }, sizeCm: null,
       water: { warm: n($("ww").value), cold: n($("wc").value) },
-      fert: { on: $("fo").checked, warm: n($("fw").value), cold: n($("fc").value) },
+      fert: { on: !!(a.fe ?? fe0), every: (a.fe ?? fe0) || null, warm: null, cold: null },
       moistureMin: Math.min(100, parseInt($("mm").value, 10) || 30), note: "", careRef: {}, photo: a.thumb || null,
       ref: { wikidata: a.wiki?.qid || null, perenual: a.per || null, claude: a.prop ? { light: a.prop.light, notes: a.prop.notes } : null },
     };
@@ -382,7 +384,7 @@ function homeContext() {
   const lines = db.plants.map(p => {
     const w = due(p, "water"), f = due(p, "fert"), m = lastMoist(p), lw = last(p.id, "water");
     return `- ${p.name} (${p.species || "?"}) @ ${p.location || "?"}: 물 ${p.water.warm ?? "-"}/${p.water.cold ?? "-"}일, 마지막 물 ${lw ? lw.date : "기록 없음"}, ` +
-      `다음 물 ${dueText(w) || "-"}, 비료 ${p.fert.on ? `${p.fert.warm ?? "안 함"}/${p.fert.cold ?? "안 함"}일, 다음 ${f.none ? "안 함" : dueText(f)}` : "꺼짐"}` +
+      `다음 물 ${dueText(w) || "-"}, 비료 ${p.fert.on ? `${fertText(p)}, 다음 ${f.none ? "안 함" : f.withWater ? "다음 물 줄 때" : md(f.date)}` : "꺼짐"}` +
       `, 기준 수분 ${p.moistureMin}%${m ? `, 최근 수분 ${m.value}% (${m.date})` : ""}${p.note ? `, 메모: ${p.note}` : ""}`;
   });
   return `오늘 ${today()}, ${SEASON_KO[s]} (따뜻한 계절 ${monthsText("warm")}, 추운 계절 ${monthsText("cold")}).\n` +
