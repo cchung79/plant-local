@@ -122,7 +122,7 @@ a { color: var(--green); }
 </style>
 </head>
 <body>
-<header><h1 id="title">우리 집 식물 <span class="ver">v47</span></h1><div class="sub" id="today"></div><button id="ssync" class="hsens" hidden></button></header>
+<header><h1 id="title">우리 집 식물 <span class="ver">v48</span></h1><div class="sub" id="today"></div><button id="ssync" class="hsens" hidden></button></header>
 <main id="view"></main>
 <nav>
   <button data-tab="todo" class="on">할 일</button>
@@ -132,9 +132,9 @@ a { color: var(--green); }
 </nav>
 <div class="toast" id="toast"></div>
 
-<script src="online.js?v=47"></script>
-<script src="sensor.js?v=47"></script>
-<script src="sync.js?v=47"></script>
+<script src="online.js?v=48"></script>
+<script src="sensor.js?v=48"></script>
+<script src="sync.js?v=48"></script>
 <script id="seed" type="application/json">{"version": 1, "source": "", "seasons": {"warm": [3, 10], "cold": [11, 2]}, "plants": []}</script>
 <script>
 "use strict";
@@ -810,10 +810,12 @@ document.addEventListener("visibilitychange", () => {
 });
 
 db = load() || fromSeed();
+// two phones both pressing 물 줌 on the same day leave two records of one watering: keep one.
+// 추가 관수 is never a duplicate — several on one day are meant (each has its own id, so sync never doubles them)
 function dedupe() {
   const seen = new Set(), before = db.log.length;
   db.log = db.log.filter(l => {
-    if (l.type !== "water" && l.type !== "fert") return true;
+    if (l.type !== "water" && l.type !== "fert" || l.extra) return true;
     const k = `${l.plant}|${l.type}|${l.date}`;
     if (seen.has(k)) return false; seen.add(k); return true;
   });
@@ -838,7 +840,7 @@ pruneTrash();
 const removed = dedupe(); if (removed) setTimeout(() => toast(`같은 날 중복 기록 ${removed}건을 정리했습니다`), 300);
 save(); render();
 // ---- updates: check on every open/return; when a new version takes over, reload once (not while a plant is open) ----
-const APP_VERSION = "47";
+const APP_VERSION = "48";
 let pendingReload = false;
 if ("serviceWorker" in navigator && (location.protocol === "https:" || ["localhost", "127.0.0.1"].includes(location.hostname))) {
   const hadController = !!navigator.serviceWorker.controller;
