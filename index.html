@@ -100,6 +100,13 @@ h1 .ver { font-size: 13px; font-weight: 400; color: var(--sub); vertical-align: 
 .seg { display: flex; gap: 6px; }
 .seg button { flex: 1; padding: 9px 0; border: 1px solid var(--line); border-radius: 10px; background: var(--bg); color: var(--ink); font: inherit; font-size: 15px; cursor: pointer; }
 .seg button.on { background: var(--brown); border-color: var(--brown); color: #fff; font-weight: 700; }
+.mseg button.on { background: var(--blue); border-color: var(--blue); }
+.b-mist { background: transparent; color: var(--blue); border: 1px solid var(--blue); }
+.mistcard { display: flex; align-items: center; gap: 10px; }
+.mistcard .main { flex: 1; min-width: 0; }
+.mistcard .name { font-weight: 700; }
+.mistcard .loc { color: var(--sub); font-size: 13px; word-break: keep-all; }
+.mistcard .btn { flex: none; background: var(--blue); color: #fff; padding: 9px 16px; }
 .unit { display: flex; align-items: center; gap: 6px; }
 .unit span { color: var(--sub); font-size: 14px; white-space: nowrap; }
 body.locked { overflow: hidden; }
@@ -122,7 +129,7 @@ a { color: var(--green); }
 </style>
 </head>
 <body>
-<header><h1 id="title">우리 집 식물 <span class="ver">v48</span></h1><div class="sub" id="today"></div><button id="ssync" class="hsens" hidden></button></header>
+<header><h1 id="title">우리 집 식물 <span class="ver">v49</span></h1><div class="sub" id="today"></div><button id="ssync" class="hsens" hidden></button></header>
 <main id="view"></main>
 <nav>
   <button data-tab="todo" class="on">할 일</button>
@@ -132,9 +139,9 @@ a { color: var(--green); }
 </nav>
 <div class="toast" id="toast"></div>
 
-<script src="online.js?v=48"></script>
-<script src="sensor.js?v=48"></script>
-<script src="sync.js?v=48"></script>
+<script src="online.js?v=49"></script>
+<script src="sensor.js?v=49"></script>
+<script src="sync.js?v=49"></script>
 <script id="seed" type="application/json">{"version": 1, "source": "", "seasons": {"warm": [3, 10], "cold": [11, 2]}, "plants": []}</script>
 <script>
 "use strict";
@@ -213,6 +220,40 @@ function fertEvery(p) {
   return w && f ? Math.min(4, Math.max(2, Math.round(f / w))) : 2;
 }
 const fertByWater = p => p.fert.on && !!interval(p, "water");
+
+// 분무: per plant 안 함(off) / 물 줄 때(water) / 정기(regular). 정기 plants are misted together on one day,
+// every mistDays[season] days (설정 → 계절; default 추운 7일 · 따뜻 14일). Until chosen, a plant is read from its species
+// (researched 2026-11: misting does not raise room humidity; it rinses leaves and keeps spider mites down in dry heated air)
+const MIST_MODES = [["off", "안 함"], ["water", "물 줄 때"], ["regular", "정기"]];
+const MIST_BY_SPECIES = [
+  [/^(Adansonia|Olea|Zamioculcas|Nandina|Dracaena)\b/i, "off"],
+  [/^(Monstera|Syngonium|Chamaedorea)\b/i, "water"],
+  [/^(Ficus|Heptapleurum|Schefflera|Asparagus)\b/i, "regular"],
+];
+function mistMode(p) {
+  if (p.mist) return p.mist;
+  const hit = MIST_BY_SPECIES.find(([re]) => re.test(p.species || ""));
+  return hit ? hit[1] : "off";
+}
+const mistDays = () => db.seasons.mistDays || { warm: 14, cold: 7 };
+const mistGroup = () => db.plants.filter(p => mistMode(p) === "regular");
+function mistDue() {                  // {date, days, plants} or null when no plant is on 정기
+  const ps = mistGroup(); if (!ps.length) return null;
+  const ids = new Set(ps.map(p => p.id));
+  const l = db.log.filter(x => x.type === "mist" && ids.has(x.plant) && x.date <= today()).sort((a, b) => a.date < b.date ? 1 : -1)[0];
+  const date = l ? addDays(l.date, mistDays()[season(l.date)] || 7) : today();
+  return { date, days: diff(today(), date), plants: ps, last: l?.date };
+}
+function mistCard(m, now) {
+  return `<div class="card mistcard"><div class="main"><div class="name">분무 · ${m.plants.length}그루</div>
+    <div class="loc">${m.plants.map(p => `<span class="nw">${esc(p.name)}</span>`).join(" · ")}</div></div>${now ? `<button class="btn" id="mistdone">완료</button>` : ""}</div>`;
+}
+function mistDone() {
+  const ls = mistGroup().map(p => ({ id: uid(), plant: p.id, type: "mist", date: today() }));
+  db.log.push(...ls); save(); render();
+  const m = mistDue();
+  toast(`분무 ${ls.length}그루 · 다음 ${md(m.date)}`, { label: "되돌리기", run: () => { const ids = new Set(ls.map(l => l.id)); db.log = db.log.filter(l => !ids.has(l.id)); save(); render(); } });
+}
 const fertText = p => p.fert.on ? `물 ${fertEvery(p)}번에 1번 · ${fertOff()[0]}~${fertOff()[1]}월 쉼` : "안 함";
 // waterings since the last fertilizer are counted (추가 관수 not); the N-th one carries it, pushed past the rest months.
 // later waterings are projected with each date's season interval, counting from today when water is overdue
@@ -290,7 +331,9 @@ function prevText(p, kind) {
 }
 function todayRow(p, canSnooze = true) {   // canSnooze=false: 다음 일정 — the dates only
   const kinds = ["water", "fert"].filter(k => !due(p, k).none);
-  const cells = kinds.map((k, i) => `<div class="pv" style="grid-row:${i + 1}">${prevText(p, k)}</div><div class="bd" style="grid-row:${i + 1}">${badge(p, k)}</div>`).join("");
+  const cells = kinds.map((k, i) => `<div class="pv" style="grid-row:${i + 1}">${prevText(p, k)}</div><div class="bd" style="grid-row:${i + 1}">${badge(p, k)}</div>`).join("") +
+    (mistMode(p) === "water" && kinds.includes("water") ? `<div class="bd" style="grid-row:${kinds.length + 1}"><span class="badge b-mist">분무 같이</span></div>` : "");
+  if (mistMode(p) === "water" && kinds.includes("water")) kinds.push("mist");
   return `<div class="card plant tcard" data-open="${p.id}">
     <div class="main" style="grid-row:1 / ${kinds.length + (canSnooze ? 2 : 1)}">${p.photo ? `<img src="${p.photo}" alt="">` : ""}<div><div class="name">${esc(p.name)}</div><div class="loc">${esc(p.location)}${p.waterL ? ` · <span class="nw">💧${p.waterL}L</span>` : ""}${moistBadge(p)}</div></div></div>
     ${cells}${canSnooze ? `<div class="pv" style="grid-row:${kinds.length + 1}"><button class="btn ghost snz" data-snz="${p.id}">미룸</button></div>` : ""}</div>`;
@@ -339,19 +382,22 @@ function renderTodo() {
     else if (isFinite(min)) { const day = addDays(today(), min); if (!next.has(day)) next.set(day, []); next.get(day).push(p); }
   }
   now.sort((a, b) => a[0] - b[0]);
-  const done = doneBy[0];
+  const done = doneBy[0], mist = mistDue(), mistNow = mist && mist.days <= 0;
+  if (mist && !mistNow && !next.has(mist.date)) next.set(mist.date, []);
   const WD = ["일", "월", "화", "수", "목", "금", "토"], wd = s => WD[parse(s).getDay()];
   const dayHead = d => { const n = diff(today(), d); return `${n === 1 ? "내일" : n + "일 뒤"} · ${md(d)} (${wd(d)})`; };
   view.innerHTML =
     sensorTopHtml() +
     `<h2 style="font-size:17px;color:var(--ink)">오늘 할 일 · ${md(today())} (${wd(today())})${now.length ? ` · ${now.length}그루` : ""}</h2>` +
-    (now.length ? now.map(x => todayRow(x[1])).join("") : `<div class="empty">${done.length || finishedToday ? "오늘 할 일을 다 했습니다" : "오늘은 할 일이 없습니다"}</div>`) +
+    (mistNow ? mistCard(mist, true) : "") +
+    (now.length ? now.map(x => todayRow(x[1])).join("") : mistNow ? "" : `<div class="empty">${done.length || finishedToday ? "오늘 할 일을 다 했습니다" : "오늘은 할 일이 없습니다"}</div>`) +
     (done.length ? `<h2 style="font-size:17px;color:var(--ink)">오늘 한 일 · ${done.length}그루</h2>` + done.map(([p, did]) => doneRow(p, did, 0)).join("") : "") +
     [1, 2].map(n => doneBy[n].length ? `<h2>${n === 1 ? "어제" : "그제"} 한 일 · ${md(addDays(today(), -n))}</h2>` + doneBy[n].map(([p, did]) => doneRow(p, did, n)).join("") : "").join("") +
     (unknown.length ? `<h2>마지막 기록이 없음 — 물 준 날을 넣어 주세요</h2>${unknown.map(plantRow).join("")}` : "") +
     `<h2 style="font-size:17px;color:var(--ink);margin-top:28px">다음 일정</h2>` +
-    [...next.keys()].sort().map(d => `<h2>${dayHead(d)}</h2>${next.get(d).map(p => todayRow(p, false)).join("")}`).join("");
+    [...next.keys()].sort().map(d => `<h2>${dayHead(d)}</h2>${mist && !mistNow && mist.date === d ? mistCard(mist, false) : ""}${next.get(d).map(p => todayRow(p, false)).join("")}`).join("");
   bindSensorTop();
+  const md0 = document.getElementById("mistdone"); if (md0) md0.onclick = e => { e.stopPropagation(); mistDone(); };
 }
 function renderPlants() {
   const byLoc = {};
@@ -396,6 +442,8 @@ function renderSettings() {
     <div class="small">나머지 달은 추운 계절입니다. 지금은 <b>${SEASON_KO[season(today())]}</b>.</div>
     <div class="field"><label>비료 쉬는 달 시작</label><div class="unit"><input type="number" min="1" max="12" id="fs" value="${fertOff()[0]}"><span>월</span></div></div>
     <div class="field"><label>비료 쉬는 달 끝</label><div class="unit"><input type="number" min="1" max="12" id="fe" value="${fertOff()[1]}"><span>월</span></div></div>
+    <div class="field"><label>정기 분무 · 따뜻한 계절</label><div class="unit"><input type="number" min="1" max="60" inputmode="numeric" id="mdw" value="${mistDays().warm}"><span>일</span></div></div>
+    <div class="field"><label>정기 분무 · 추운 계절</label><div class="unit"><input type="number" min="1" max="60" inputmode="numeric" id="mdc" value="${mistDays().cold}"><span>일</span></div></div>
   </div>
   <h2>백업 (폰끼리 옮기기)</h2>
   <div class="card">
@@ -422,6 +470,11 @@ function renderSettings() {
     if (a >= 1 && a <= 12 && b >= 1 && b <= 12) { db.seasons.fertOff = [a, b]; save(); toast(`비료는 ${a}~${b}월에 쉽니다`); }
   };
   document.getElementById("fs").onchange = setFertOff; document.getElementById("fe").onchange = setFertOff;
+  const setMistDays = () => {
+    const w = +document.getElementById("mdw").value, c = +document.getElementById("mdc").value;
+    if (w >= 1 && w <= 60 && c >= 1 && c <= 60) { db.seasons.mistDays = { warm: w, cold: c }; save(); toast(`정기 분무: 따뜻 ${w}일 · 추운 ${c}일마다`); }
+  };
+  document.getElementById("mdw").onchange = setMistDays; document.getElementById("mdc").onchange = setMistDays;
   document.getElementById("go-eco").onclick = () => { settingsSub = "eco"; renderSettings(); };
   document.getElementById("go-online").onclick = () => { settingsSub = "online"; renderSettings(); };
   document.getElementById("go-server").onclick = () => { settingsSub = "server"; renderSettings(); };
@@ -465,7 +518,7 @@ function drawPlant(p, isNew) {
   const lw = last(p.id, "water"), lf = last(p.id, "fert");
   const logs = logsOf(p.id).slice(0, 30);
   const baseW = last(p.id, "water")?.id, baseF = last(p.id, "fert")?.id;
-  const TYPE = { water: "물", fert: "비료", moist: "수분", snooze: "미룸", edit: "간격 변경", diag: "상태 묻기", report: "전문 진단" };
+  const TYPE = { water: "물", fert: "비료", moist: "수분", snooze: "미룸", edit: "간격 변경", diag: "상태 묻기", report: "전문 진단", mist: "분무" };
   sheet.innerHTML = `
   <header><button id="back">‹ 목록</button><h1 style="flex:1;font-size:18px;margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(p.name)}</h1></header>
   <main>
@@ -498,6 +551,8 @@ function drawPlant(p, isNew) {
       <div class="field"><label>최대 관수 무게</label><div class="unit"><input type="number" inputmode="decimal" step="0.1" min="0" data-k="maxKg" value="${p.maxKg ?? ""}"><span>kg</span></div></div>
       <div class="field fseg"><label>비료 · 물 몇 번에 한 번<span class="hint">${fertOff()[0]}~${fertOff()[1]}월은 쉼</span></label>
         <div class="seg">${[0, ...FERT_EVERY].map(n => `<button class="${(n ? p.fert.on && fertEvery(p) === n : !p.fert.on) ? "on" : ""}" data-fe="${n}">${n ? n + "번" : "끔"}</button>`).join("")}</div></div>
+      <div class="field fseg"><label>분무<span class="hint">정기: 따뜻 ${mistDays().warm}일 · 추운 ${mistDays().cold}일마다 한 번에</span></label>
+        <div class="seg mseg">${MIST_MODES.map(([k, t]) => `<button class="${mistMode(p) === k ? "on" : ""}" data-mi="${k}">${t}</button>`).join("")}</div></div>
       <div class="field"><label>물 줄 기준 수분<span class="hint">수분계가 이 값 이하면 물</span></label><div class="unit"><input type="number" inputmode="numeric" min="0" max="100" data-k="moistureMin" value="${p.moistureMin ?? ""}"><span>%</span></div></div>
       ${sensorFieldHtml(p)}
     </div>
@@ -559,6 +614,12 @@ function drawPlant(p, isNew) {
     else if (a === "waterL" || a === "maxKg") { const l = parseFloat(inp.value); if (l > 0) p[a] = Math.round(l * 100) / 100; else delete p[a]; }
     else p[a][b] = v;
     if (old !== (b ? p[a][b] : p[a])) db.log.push({ id: uid(), plant: p.id, type: "edit", date: today(), note: `${label(inp.dataset.k)} ${unitv(old, inp.dataset.k)} → ${unitv(b ? p[a][b] : p[a], inp.dataset.k)}` });
+    save(); drawPlant(p); toast("바꿨습니다");
+  };
+  for (const b of sheet.querySelectorAll("[data-mi]")) b.onclick = () => {
+    const name = k => MIST_MODES.find(m => m[0] === k)[1], old = mistMode(p);
+    p.mist = b.dataset.mi;
+    if (old !== p.mist) db.log.push({ id: uid(), plant: p.id, type: "edit", date: today(), note: `분무 ${name(old)} → ${name(p.mist)}` });
     save(); drawPlant(p); toast("바꿨습니다");
   };
   for (const b of sheet.querySelectorAll("[data-fe]")) b.onclick = () => {
@@ -669,7 +730,7 @@ function toast(t, action) {
   if (action) { const b = document.createElement("button"); b.textContent = action.label; b.className = "toastbtn"; b.onclick = () => { e.style.display = "none"; action.run(); }; e.appendChild(b); }
   clearTimeout(toastT); toastT = setTimeout(() => e.style.display = "none", action ? 6000 : 2200);
 }
-const TRASH_DAYS = 30, TYPE_KO = ({ water: "물", fert: "비료", moist: "수분", snooze: "미룸", edit: "변경", diag: "상태 묻기" });
+const TRASH_DAYS = 30, TYPE_KO = ({ water: "물", fert: "비료", moist: "수분", snooze: "미룸", edit: "변경", diag: "상태 묻기", mist: "분무" });
 function trashIt(what, data, extra = {}) { (db.trash ??= []).push({ id: uid(), what, data, at: Date.now(), ...extra }); }
 function removeLog(l, p) {                    // p: the plant whose page is open (redrawn), or null
   db.log = db.log.filter(x => x !== l); trashIt("log", l); const t = db.trash.at(-1); save();
@@ -840,7 +901,7 @@ pruneTrash();
 const removed = dedupe(); if (removed) setTimeout(() => toast(`같은 날 중복 기록 ${removed}건을 정리했습니다`), 300);
 save(); render();
 // ---- updates: check on every open/return; when a new version takes over, reload once (not while a plant is open) ----
-const APP_VERSION = "48";
+const APP_VERSION = "49";
 let pendingReload = false;
 if ("serviceWorker" in navigator && (location.protocol === "https:" || ["localhost", "127.0.0.1"].includes(location.hostname))) {
   const hadController = !!navigator.serviceWorker.controller;
