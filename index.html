@@ -63,6 +63,7 @@ button.badge.amt { border: 0; font: inherit; font-size: 14px; padding: 5px 10px;
 .tcard .main > div { min-width: 0; }
 .tcard .name { word-break: keep-all; }
 .nw { white-space: nowrap; }
+.plus { color: var(--blue); font-weight: 700; }
 .tcard .pv { grid-column: 2; font-size: 12px; color: var(--sub); white-space: nowrap; justify-self: end; }
 .tcard .bd { grid-column: 3; justify-self: end; }
 .tcard .snz { padding: 2px 12px; font-size: 13px; border-radius: 999px; }
@@ -129,7 +130,7 @@ a { color: var(--green); }
 </style>
 </head>
 <body>
-<header><h1 id="title">우리 집 식물 <span class="ver">v49</span></h1><div class="sub" id="today"></div><button id="ssync" class="hsens" hidden></button></header>
+<header><h1 id="title">우리 집 식물 <span class="ver">v50</span></h1><div class="sub" id="today"></div><button id="ssync" class="hsens" hidden></button></header>
 <main id="view"></main>
 <nav>
   <button data-tab="todo" class="on">할 일</button>
@@ -139,9 +140,9 @@ a { color: var(--green); }
 </nav>
 <div class="toast" id="toast"></div>
 
-<script src="online.js?v=49"></script>
-<script src="sensor.js?v=49"></script>
-<script src="sync.js?v=49"></script>
+<script src="online.js?v=50"></script>
+<script src="sensor.js?v=50"></script>
+<script src="sync.js?v=50"></script>
 <script id="seed" type="application/json">{"version": 1, "source": "", "seasons": {"warm": [3, 10], "cold": [11, 2]}, "plants": []}</script>
 <script>
 "use strict";
@@ -320,7 +321,7 @@ function moistBadge(p) {
 function plantRow(p) {
   return `<div class="card plant" data-open="${p.id}">
     ${p.photo ? `<img src="${p.photo}" alt="" style="width:44px;height:44px;object-fit:cover;border-radius:10px;flex:none">` : ""}
-    <div class="main"><div class="name">${esc(p.name)}</div><div class="loc">${esc(p.location)}${p.waterL ? ` · 💧${p.waterL}L` : ""}${moistBadge(p)}</div></div>
+    <div class="main"><div class="name">${esc(p.name)}</div><div class="loc">${esc(p.location)}${litres(p)}${moistBadge(p)}</div></div>
     <div class="badges">${badge(p, "water")}${badge(p, "fert")}</div></div>`;
 }
 // 오늘 할 일 and 다음 일정 cards: between the name and each badge, the last date it was given and the interval ("10/18 · 7일마다"),
@@ -335,7 +336,7 @@ function todayRow(p, canSnooze = true) {   // canSnooze=false: 다음 일정 —
     (mistMode(p) === "water" && kinds.includes("water") ? `<div class="bd" style="grid-row:${kinds.length + 1}"><span class="badge b-mist">분무 같이</span></div>` : "");
   if (mistMode(p) === "water" && kinds.includes("water")) kinds.push("mist");
   return `<div class="card plant tcard" data-open="${p.id}">
-    <div class="main" style="grid-row:1 / ${kinds.length + (canSnooze ? 2 : 1)}">${p.photo ? `<img src="${p.photo}" alt="">` : ""}<div><div class="name">${esc(p.name)}</div><div class="loc">${esc(p.location)}${p.waterL ? ` · <span class="nw">💧${p.waterL}L</span>` : ""}${moistBadge(p)}</div></div></div>
+    <div class="main" style="grid-row:1 / ${kinds.length + (canSnooze ? 2 : 1)}">${p.photo ? `<img src="${p.photo}" alt="">` : ""}<div><div class="name">${esc(p.name)}</div><div class="loc">${esc(p.location)}${litres(p)}${moistBadge(p)}</div></div></div>
     ${cells}${canSnooze ? `<div class="pv" style="grid-row:${kinds.length + 1}"><button class="btn ghost snz" data-snz="${p.id}">미룸</button></div>` : ""}</div>`;
 }
 const SNOOZE = [2, 5, 7];
@@ -535,7 +536,7 @@ function drawPlant(p, isNew) {
     <div class="card">
       <div class="unit" style="margin-bottom:8px"><span>기록할 날짜</span><input type="date" id="dt" value="${sheet.dataset.date || today()}" max="${today()}"><button class="btn btn-ghost" id="dtoday" style="padding:8px 10px;white-space:nowrap">오늘</button></div>
       <div class="row2" style="margin-bottom:8px"><input type="number" id="mv" inputmode="numeric" min="0" max="100" placeholder="수분계 %"><button class="btn btn-moist" id="mbtn">수분 기록</button></div>
-      <div class="amts"><label>준 물 <input type="number" id="wamt" inputmode="decimal" step="0.1" min="0" value="${p.waterL ?? ""}" placeholder="—"> L</label><label>비료 <input type="text" id="famt" value="${esc(p.fertAmt ?? "")}" placeholder="예: 2mL"></label></div>
+      <div class="amts"><label>준 물 <input type="number" id="wamt" inputmode="decimal" step="0.1" min="0" value="${p.waterL ?? ""}" placeholder="—"> L${lastPlus(p) ? ` <span class="plus">+${lastPlus(p)}L</span>` : ""}</label><label>비료 <input type="text" id="famt" value="${esc(p.fertAmt ?? "")}" placeholder="예: 2mL"></label></div>
       <div class="row3"><button class="btn btn-water" id="wbtn">물 줌</button><button class="btn btn-fert" id="fbtn">비료 줌</button><button class="btn btn-ghost" id="bbtn">물+비료</button></div>
     </div>
     <div id="sg"></div>
@@ -777,6 +778,17 @@ view.addEventListener("change", e => {
 // one plant's watering (처음 관수 + 추가 관수, up to 3 days): the box shows the total and is always visible,
 // under the place "10/24 4L · 10/25 +1L" (each 추가 can be tapped to change/remove), a [+ 추가] button, ✓ marks
 const r2 = n => Math.round(n * 100) / 100;
+// 추가 관수 of the last round (since the newest first watering), summed: shown beside 1회 용수량 so the next watering
+// can repeat it ("💧4L +1.5L")
+function lastPlus(p) {
+  const ws = logsOf(p.id, "water").filter(l => l.date <= today()), main = ws.find(l => !l.extra);
+  return r2(ws.filter(l => l.extra && (!main || l.date >= main.date)).reduce((a, l) => a + (Number(l.amount) || 0), 0));
+}
+function litres(p) {
+  const plus = lastPlus(p);
+  if (!p.waterL && !plus) return "";
+  return ` · <span class="nw">💧${p.waterL ? p.waterL + "L" : ""}${plus ? ` <span class="plus">+${plus}L</span>` : ""}</span>`;
+}
 function waterRound(p) {
   const ws = logsOf(p.id, "water").filter(l => l.date <= today());        // newest first
   const main = ws.find(l => !l.extra) || null;
@@ -901,7 +913,7 @@ pruneTrash();
 const removed = dedupe(); if (removed) setTimeout(() => toast(`같은 날 중복 기록 ${removed}건을 정리했습니다`), 300);
 save(); render();
 // ---- updates: check on every open/return; when a new version takes over, reload once (not while a plant is open) ----
-const APP_VERSION = "49";
+const APP_VERSION = "50";
 let pendingReload = false;
 if ("serviceWorker" in navigator && (location.protocol === "https:" || ["localhost", "127.0.0.1"].includes(location.hostname))) {
   const hadController = !!navigator.serviceWorker.controller;
